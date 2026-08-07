@@ -12,9 +12,26 @@ public sealed class ObjectReader : IDisposable
     {
         _loose = new LooseObjectReader(gitDir);
         var packDir = Path.Combine(gitDir, "objects", "pack");
-        _packs = Directory.Exists(packDir)
-            ? Directory.GetFiles(packDir, "*.pack").Select(PackFile.Open).ToArray()
-            : [];
+        var packs = new List<PackFile>();
+        if (Directory.Exists(packDir))
+        {
+            try
+            {
+                foreach (var packPath in Directory.GetFiles(packDir, "*.pack"))
+                {
+                    // .pack без .idx — штатное окно во время git repack/fetch
+                    // (.pack пишется раньше индекса): пропускаем, не валим весь ридер
+                    if (!File.Exists(Path.ChangeExtension(packPath, ".idx"))) continue;
+                    packs.Add(PackFile.Open(packPath));
+                }
+            }
+            catch
+            {
+                foreach (var p in packs) p.Dispose(); // не течём при падении на N-м паке
+                throw;
+            }
+        }
+        _packs = packs.ToArray();
     }
 
     public bool Contains(in ObjectId id)
@@ -35,7 +52,9 @@ public sealed class ObjectReader : IDisposable
 
     public byte[] ReadAll(in ObjectId id, long maxBytes)
     {
-        if (_loose.Contains(id)) return _loose.ReadAll(id, maxBytes);
+        // одним вызовом, без Contains+ReadAll: git gc может убрать loose-файл
+        // между двумя проверками, а объект уже лежит в паке строкой ниже
+        if (_loose.TryReadAll(id, maxBytes) is { } loose) return loose;
         foreach (var pack in _packs)
             if (pack.TryReadObject(id, maxBytes, out _, out var data)) return data;
         throw new FileNotFoundException($"object not found: {id}");

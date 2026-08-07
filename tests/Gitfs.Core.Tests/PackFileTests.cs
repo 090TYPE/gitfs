@@ -61,6 +61,18 @@ public class PackFileTests
             ObjectId.Parse("0123456789012345678901234567890123456789"), 1 << 24, out _, out _));
     }
 
+    [Fact]
+    public void MaxBytes_is_enforced_at_the_boundary()
+    {
+        using var repo = BuildPackedRepo();
+        var idx = Assert.Single(repo.IndexFiles());
+        using var pack = PackFile.Open(Path.ChangeExtension(idx, ".pack"));
+        var e = repo.VerifyPack(idx).First(x => x.Depth == 0 && x.Size > 1);
+        var id = ObjectId.Parse(e.Sha);
+        Assert.Throws<InvalidDataException>(() => pack.TryReadObject(id, e.Size - 1, out _, out _));
+        Assert.True(pack.TryReadObject(id, e.Size, out _, out _)); // граница включительно
+    }
+
     private static string TypeName(GitObjectType t) => t switch
     {
         GitObjectType.Commit => "commit", GitObjectType.Tree => "tree",

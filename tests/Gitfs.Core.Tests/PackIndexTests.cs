@@ -98,4 +98,77 @@ public class PackIndexTests
         }
         finally { File.Delete(path); }
     }
+
+    [Fact]
+    public void Large_offset_index_beyond_table_throws_not_reads_trailer()
+    {
+        // MSB у смещения взведён, а u64-таблица пуста: без стражи это чтение
+        // sha1-трейлера как смещения — молча (находка ревью)
+        var sha = ObjectId.Parse("aa23456789012345678901234567890123456789");
+        using var ms = new MemoryStream();
+        void U32(uint v)
+        {
+            Span<byte> b = stackalloc byte[4];
+            System.Buffers.Binary.BinaryPrimitives.WriteUInt32BigEndian(b, v);
+            ms.Write(b);
+        }
+        ms.Write(new byte[] { 0xff, 0x74, 0x4f, 0x63 });
+        U32(2);
+        for (var i = 0; i < 256; i++) U32(i >= 0xaa ? 1u : 0u);
+        var raw = new byte[20];
+        sha.WriteRaw(raw);
+        ms.Write(raw);
+        U32(0);                 // CRC
+        U32(0x8000_0000);       // ссылка в пустую u64-таблицу
+        ms.Write(new byte[40]); // сразу трейлер — большой таблицы нет
+
+        var path = Path.Combine(Path.GetTempPath(), $"gitfs-idx-{Guid.NewGuid():N}.idx");
+        File.WriteAllBytes(path, ms.ToArray());
+        try
+        {
+            var index = PackIndex.Load(path);
+            Assert.Throws<InvalidDataException>(() => index.TryFindOffset(sha, out _));
+        }
+        finally { File.Delete(path); }
+    }
+
+    [Fact]
+    public void Corrupt_idx_fails_with_clear_error()
+    {
+        using var repo = BuildPackedRepo();
+        var good = File.ReadAllBytes(repo.IndexFiles()[0]);
+        var path = Path.Combine(Path.GetTempPath(), $"gitfs-idx-{Guid.NewGuid():N}.idx");
+        try
+        {
+            File.WriteAllBytes(path, good.AsSpan(0, 100).ToArray()); // обрезан
+            Assert.Throws<InvalidDataException>(() => PackIndex.Load(path));
+
+            var badMagic = (byte[])good.Clone();
+            badMagic[0] ^= 0xff;
+            File.WriteAllBytes(path, badMagic);
+            Assert.Throws<InvalidDataException>(() => PackIndex.Load(path));
+
+            var badVersion = (byte[])good.Clone();
+            badVersion[7] = 3;
+            File.WriteAllBytes(path, badVersion);
+            Assert.Throws<InvalidDataException>(() => PackIndex.Load(path));
+
+            // обрезка ниже заявленного Count — InvalidDataException, не ArgumentOutOfRange
+            var truncated = good.AsSpan(0, good.Length - 60).ToArray();
+            File.WriteAllBytes(path, truncated);
+            Assert.Throws<InvalidDataException>(() => PackIndex.Load(path));
+        }
+        finally { File.Delete(path); }
+    }
+
+    [Fact]
+    public void ObjectIds_enumerates_exactly_the_pack_contents()
+    {
+        using var repo = BuildPackedRepo();
+        var idx = repo.IndexFiles()[0];
+        var index = PackIndex.Load(idx);
+        var expected = repo.VerifyPack(idx).Select(e => e.Sha).ToHashSet();
+        var actual = index.ObjectIds.Select(o => o.ToString()).ToHashSet();
+        Assert.Equal(expected, actual);
+    }
 }

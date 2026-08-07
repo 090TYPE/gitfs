@@ -254,7 +254,7 @@ version-file := ( NNNN "-" short-oid | "latest" ) [ extension ] | ".truncated"
 ├────────────────────────────────────────────────────┤
 │ GitCore — собственный ридер                        │
 │   RefStore  ObjectReader  PackIndex                │
-│   LooseObjectReader  PackReader  DeltaCodec        │
+│   LooseObjectReader  PackFile  DeltaCodec          │
 │   TreeWalker  RevWalker                            │
 └────────────────────────────────────────────────────┘
 ```
@@ -638,7 +638,7 @@ gitfs/
 ├─ src/
 │  ├─ Gitfs.Core/
 │  │   ├─ ObjectId.cs  GitObjectType.cs  TreeEntry.cs  CommitObject.cs
-│  │   ├─ Objects/     LooseObjectReader.cs  PackReader.cs  PackIndex.cs
+│  │   ├─ Objects/     LooseObjectReader.cs  PackFile.cs  PackIndex.cs
 │  │   │               DeltaCodec.cs  ObjectReader.cs
 │  │   ├─ Refs/        RefStore.cs  PackedRefsParser.cs
 │  │   ├─ Walk/        TreeWalker.cs  RevWalker.cs

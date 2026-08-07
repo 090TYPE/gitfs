@@ -13,11 +13,18 @@ public static class DeltaCodec
         return (source, target, pos);
     }
 
-    public static byte[] Apply(ReadOnlySpan<byte> baseData, ReadOnlySpan<byte> delta)
+    public static byte[] Apply(ReadOnlySpan<byte> baseData, ReadOnlySpan<byte> delta,
+        long maxTargetBytes = long.MaxValue)
     {
         var (sourceSize, targetSize, pos) = ReadSizes(delta);
         if (sourceSize != baseData.Length)
             throw new InvalidDataException($"delta expects base of {sourceSize} bytes, got {baseData.Length}");
+        // Потолок ДО аллокации: дельта в несколько байт может заявить результат
+        // в гигабайты — из ревью, находка про DoS через targetSize.
+        if (targetSize > maxTargetBytes)
+            throw new InvalidDataException($"delta target {targetSize} bytes exceeds limit {maxTargetBytes}");
+        if (targetSize > int.MaxValue)
+            throw new InvalidDataException($"delta target {targetSize} bytes not supported");
 
         var result = new byte[targetSize];
         var written = 0;

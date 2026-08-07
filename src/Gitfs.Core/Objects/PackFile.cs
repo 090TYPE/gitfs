@@ -25,6 +25,8 @@ public sealed class PackFile : IDisposable
     {
         var index = PackIndex.Load(Path.ChangeExtension(packPath, ".idx"));
         var length = new FileInfo(packPath).Length;
+        if (length < 32) // 12 байт заголовка + 20 байт sha1-трейлера
+            throw new InvalidDataException($"pack too short: {packPath}");
         var mmap = MemoryMappedFile.CreateFromFile(packPath, FileMode.Open, null, 0,
             MemoryMappedFileAccess.Read);
         return new PackFile(mmap, length, index);
@@ -92,11 +94,7 @@ public sealed class PackFile : IDisposable
             break;
         }
         while (deltas.Count > 0)
-        {
-            data = DeltaCodec.Apply(data, deltas.Pop());
-            if (data.Length > maxBytes)
-                throw new InvalidDataException($"object {id} exceeds {maxBytes} bytes");
-        }
+            data = DeltaCodec.Apply(data, deltas.Pop(), maxBytes); // потолок ДО аллокации
         return true;
     }
 
@@ -106,8 +104,15 @@ public sealed class PackFile : IDisposable
 
     private readonly record struct BaseRef(long OfsNegative, ObjectId? RefId);
 
-    private MemoryMappedViewStream OpenView(long offset) =>
-        _mmap.CreateViewStream(offset, _length - offset, MemoryMappedFileAccess.Read);
+    private MemoryMappedViewStream OpenView(long offset)
+    {
+        // Смещение приходит из .idx и не заслуживает доверия. Особенно коварен
+        // offset == длине файла: mmap выравнен по страницам, view нулевого
+        // размера молча отдал бы нулевой хвост страницы — «успешный» разбор мусора.
+        if (offset < 12 || offset >= _length - 20)
+            throw new InvalidDataException($"pack offset {offset} out of range");
+        return _mmap.CreateViewStream(offset, _length - offset, MemoryMappedFileAccess.Read);
+    }
 
     /// <summary>Читает заголовок объекта; возвращает тип, размер (для дельты —
     /// размер дельты) и абсолютное смещение начала данных.</summary>
@@ -117,13 +122,21 @@ public sealed class PackFile : IDisposable
         var b = ReadByteOrThrow(view);
         pos++;
         var type = (RawType)((b >> 4) & 0x7);
+        if (type is not (RawType.Commit or RawType.Tree or RawType.Blob or RawType.Tag
+            or RawType.OfsDelta or RawType.RefDelta))
+            throw new InvalidDataException($"bad packed object type {(int)type}");
         long size = b & 0xf;
         var shift = 4;
         while ((b & 0x80) != 0)
         {
             b = ReadByteOrThrow(view);
             pos++;
-            size |= (long)(b & 0x7f) << shift;
+            // C# маскирует сдвиг по 63 — без стражи сверхдлинный varint даёт
+            // ТИХО неверный (в т.ч. отрицательный) размер, git здесь падает.
+            var bits = (long)(b & 0x7f);
+            if (shift >= 63 || bits << shift >> shift != bits)
+                throw new InvalidDataException("object size varint overflow");
+            size |= bits << shift;
             shift += 7;
         }
         return (type, size, offset + pos);
@@ -143,6 +156,9 @@ public sealed class PackFile : IDisposable
             long n = b & 0x7f;
             while ((b & 0x80) != 0)
             {
+                // страж переполнения «прибавляющего» varint — аналог MSB(n,7) в git
+                if ((n & unchecked((long)0xFE00_0000_0000_0000UL)) != 0)
+                    throw new InvalidDataException("ofs-delta varint overflow");
                 b = ReadByteOrThrow(view);
                 consumed++;
                 n = ((n + 1) << 7) | (uint)(b & 0x7f);
@@ -170,7 +186,7 @@ public sealed class PackFile : IDisposable
 
     private byte[] Inflate(long dataStart, long declaredSize, long maxBytes)
     {
-        if (declaredSize > maxBytes)
+        if (declaredSize < 0 || declaredSize > maxBytes)
             throw new InvalidDataException($"packed entry of {declaredSize} bytes exceeds {maxBytes}");
         using var view = OpenView(dataStart);
         using var z = new ZLibStream(view, CompressionMode.Decompress);
@@ -182,6 +198,8 @@ public sealed class PackFile : IDisposable
             if (n == 0) throw new InvalidDataException("truncated packed object");
             read += n;
         }
+        if (z.ReadByte() != -1)
+            throw new InvalidDataException("packed object longer than declared size");
         return data;
     }
 

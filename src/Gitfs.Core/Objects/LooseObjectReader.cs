@@ -49,10 +49,16 @@ public sealed class LooseObjectReader
         throw new InvalidDataException($"corrupt loose object header: {id}");
     }
 
-    public byte[] ReadAll(in ObjectId id, long maxBytes)
+    public byte[] ReadAll(in ObjectId id, long maxBytes) =>
+        TryReadAll(id, maxBytes)
+        ?? throw new FileNotFoundException($"loose object not found: {id}");
+
+    /// <summary>null — объекта нет среди loose. Одна операция без Contains+Read:
+    /// git gc может убрать loose-файл между двумя вызовами.</summary>
+    public byte[]? TryReadAll(in ObjectId id, long maxBytes)
     {
-        using var stream = TryOpenStream(id, out _, out var size)
-            ?? throw new FileNotFoundException($"loose object not found: {id}");
+        using var stream = TryOpenStream(id, out _, out var size);
+        if (stream is null) return null;
         if (size > maxBytes)
             throw new InvalidDataException($"object {id} is {size} bytes, over the {maxBytes} limit");
         var buffer = new byte[size];

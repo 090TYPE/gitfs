@@ -64,6 +64,50 @@ public class DeltaCodecTests
         Assert.Throws<InvalidDataException>(() => DeltaCodec.Apply(BaseData, delta));
     }
 
+    [Fact]
+    public void Target_over_limit_throws_before_allocation()
+    {
+        // защита от DoS: маленькая дельта заявляет гигантский результат
+        var delta = Delta(new byte[] { 11 }, EncodeVarint(1_000_000));
+        Assert.Throws<InvalidDataException>(() => DeltaCodec.Apply(BaseData, delta, maxTargetBytes: 100));
+    }
+
+    [Fact]
+    public void Copy_with_multibyte_offset_and_size()
+    {
+        var baseData = new byte[70000];
+        new Random(7).NextBytes(baseData);
+        var delta = Delta(
+            EncodeVarint(70000),
+            EncodeVarint(299),
+            // offset 300 → байты 0x01|0x02; size 299 → байты 0x10|0x20
+            new byte[] { 0b1011_0011, 44, 1, 43, 1 });
+        var result = DeltaCodec.Apply(baseData, delta);
+        Assert.Equal(baseData.AsSpan(300, 299).ToArray(), result);
+    }
+
+    [Fact]
+    public void Reserved_zero_command_throws()
+    {
+        var delta = Delta(new byte[] { 11 }, new byte[] { 8 }, new byte[] { 0 });
+        Assert.Throws<InvalidDataException>(() => DeltaCodec.Apply(BaseData, delta));
+    }
+
+    [Fact]
+    public void Copy_out_of_base_range_throws()
+    {
+        var delta = Delta(new byte[] { 11 }, new byte[] { 20 },
+            new byte[] { 0b1001_0001, 6, 20 }); // offset 6 + size 20 > base 11
+        Assert.Throws<InvalidDataException>(() => DeltaCodec.Apply(BaseData, delta));
+    }
+
+    [Fact]
+    public void Source_size_mismatch_throws()
+    {
+        var delta = Delta(new byte[] { 10 }, new byte[] { 8 }); // base на самом деле 11
+        Assert.Throws<InvalidDataException>(() => DeltaCodec.Apply(BaseData, delta));
+    }
+
     private static byte[] EncodeVarint(long value)
     {
         var bytes = new List<byte>();
