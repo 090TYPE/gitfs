@@ -20,6 +20,8 @@ public sealed class LooseObjectReader
         return Path.Combine(_objectsDir, hex[..2], hex[2..]);
     }
 
+    public bool Contains(in ObjectId id) => File.Exists(PathFor(id));
+
     public bool TryGetHeader(in ObjectId id, out GitObjectType type, out long size)
     {
         using var stream = TryOpenStream(id, out type, out size);

@@ -23,7 +23,7 @@
 - Create: `src/Gitfs.Core/Objects/DeltaCodec.cs`
 - Test: `tests/Gitfs.Core.Tests/DeltaCodecTests.cs`
 
-- [ ] **Step 1: Написать падающие тесты (ручные вектора формата)**
+- [x] **Step 1: Написать падающие тесты (ручные вектора формата)**
 
 ```csharp
 using Gitfs.Core.Objects;
@@ -107,9 +107,9 @@ public class DeltaCodecTests
 }
 ```
 
-- [ ] **Step 2: Красная фаза** — `dotnet test --filter DeltaCodecTests` → ошибки компиляции.
+- [x] **Step 2: Красная фаза** — `dotnet test --filter DeltaCodecTests` → ошибки компиляции.
 
-- [ ] **Step 3: Реализация**
+- [x] **Step 3: Реализация**
 
 ```csharp
 namespace Gitfs.Core.Objects;
@@ -188,8 +188,8 @@ public static class DeltaCodec
 }
 ```
 
-- [ ] **Step 4: Зелёная фаза** — 5 тестов PASS.
-- [ ] **Step 5: Commit** — `feat(core): DeltaCodec — copy/insert instructions, format-vector tested`
+- [x] **Step 4: Зелёная фаза** — 5 тестов PASS.
+- [x] **Step 5: Commit** — `feat(core): DeltaCodec — copy/insert instructions, format-vector tested`
 
 ---
 
@@ -200,7 +200,7 @@ public static class DeltaCodec
 - Create: `src/Gitfs.Core/Objects/PackIndex.cs`
 - Test: `tests/Gitfs.Core.Tests/PackIndexTests.cs`
 
-- [ ] **Step 1: Расширить RepoBuilder**
+- [x] **Step 1: Расширить RepoBuilder**
 
 ```csharp
     /// <summary>Упаковывает все объекты в один pack (loose исчезают).</summary>
@@ -228,7 +228,7 @@ public static class DeltaCodec
     }
 ```
 
-- [ ] **Step 2: Написать падающие тесты PackIndex**
+- [x] **Step 2: Написать падающие тесты PackIndex**
 
 ```csharp
 using Gitfs.Core;
@@ -325,9 +325,9 @@ public class PackIndexTests
 }
 ```
 
-- [ ] **Step 3: Красная фаза** — ошибки компиляции.
+- [x] **Step 3: Красная фаза** — ошибки компиляции.
 
-- [ ] **Step 4: Реализация PackIndex**
+- [x] **Step 4: Реализация PackIndex**
 
 ```csharp
 using System.Buffers.Binary;
@@ -411,8 +411,8 @@ public sealed class PackIndex
 }
 ```
 
-- [ ] **Step 5: Зелёная фаза** — 4 теста PASS (включая синтетический large-offset).
-- [ ] **Step 6: Commit** — `feat(core): PackIndex v2 — fanout binary search, 64-bit offsets`
+- [x] **Step 5: Зелёная фаза** — 4 теста PASS (включая синтетический large-offset).
+- [x] **Step 6: Commit** — `feat(core): PackIndex v2 — fanout binary search, 64-bit offsets`
 
 ---
 
@@ -422,7 +422,7 @@ public sealed class PackIndex
 - Create: `src/Gitfs.Core/Objects/PackFile.cs`
 - Test: `tests/Gitfs.Core.Tests/PackFileTests.cs`
 
-- [ ] **Step 1: Написать падающие дифференциальные тесты**
+- [x] **Step 1: Написать падающие дифференциальные тесты**
 
 ```csharp
 using Gitfs.Core;
@@ -496,9 +496,9 @@ public class PackFileTests
 }
 ```
 
-- [ ] **Step 2: Красная фаза.**
+- [x] **Step 2: Красная фаза.**
 
-- [ ] **Step 3: Реализация PackFile**
+- [x] **Step 3: Реализация PackFile**
 
 ```csharp
 using System.IO.Compression;
@@ -704,8 +704,8 @@ public sealed class PackFile : IDisposable
 }
 ```
 
-- [ ] **Step 4: Зелёная фаза** — 3 теста PASS.
-- [ ] **Step 5: Commit** — `feat(core): PackFile — mmap reads, iterative delta chains`
+- [x] **Step 4: Зелёная фаза** — 3 теста PASS.
+- [x] **Step 5: Commit** — `feat(core): PackFile — mmap reads, iterative delta chains`
 
 ---
 
@@ -715,7 +715,7 @@ public sealed class PackFile : IDisposable
 - Create: `src/Gitfs.Core/Objects/ObjectReader.cs`
 - Test: `tests/Gitfs.Core.Tests/ObjectReaderTests.cs`
 
-- [ ] **Step 1: Написать падающие тесты**
+- [x] **Step 1: Написать падающие тесты**
 
 ```csharp
 using Gitfs.Core;
@@ -777,9 +777,9 @@ public class ObjectReaderTests
 }
 ```
 
-- [ ] **Step 2: Красная фаза.**
+- [x] **Step 2: Красная фаза.**
 
-- [ ] **Step 3: Реализация**
+- [x] **Step 3: Реализация**
 
 ```csharp
 namespace Gitfs.Core.Objects;
@@ -838,15 +838,15 @@ public sealed class ObjectReader : IDisposable
     public bool Contains(in ObjectId id) => File.Exists(PathFor(id));
 ```
 
-- [ ] **Step 4: Зелёная фаза** — 2 теста PASS.
-- [ ] **Step 5: Commit** — `feat(core): composite ObjectReader — loose first, then packs`
+- [x] **Step 4: Зелёная фаза** — 2 теста PASS.
+- [x] **Step 5: Commit** — `feat(core): composite ObjectReader — loose first, then packs`
 
 ---
 
 ### Task 5: Полный прогон
 
-- [ ] **Step 1:** `dotnet test gitfs.slnx` — все тесты PASS (17 старых + 14 новых = 31).
-- [ ] **Step 2:** `git add docs/superpowers/plans/2026-08-07-gitfs-m1b-packs.md && git commit -m "docs: M1b implementation plan (packfiles + deltas)"`
+- [x] **Step 1:** `dotnet test gitfs.slnx` — все тесты PASS (17 старых + 14 новых = 31).
+- [x] **Step 2:** `git add docs/superpowers/plans/2026-08-07-gitfs-m1b-packs.md && git commit -m "docs: M1b implementation plan (packfiles + deltas)"`
 
 ---
 
