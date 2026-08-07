@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Gitfs.Core/Gitfs.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Gitfs.Core.Tests/Gitfs.Core.Tests.csproj" />
+  </Folder>
+</Solution>
