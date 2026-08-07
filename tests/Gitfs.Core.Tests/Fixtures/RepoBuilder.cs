@@ -51,7 +51,11 @@ public sealed class RepoBuilder : IDisposable
         var err = p.StandardError.ReadToEnd();
         p.WaitForExit();
         if (p.ExitCode != 0)
-            throw new InvalidOperationException($"git {string.Join(' ', args)} failed ({p.ExitCode}): {err}");
+        {
+            var stdout = System.Text.Encoding.UTF8.GetString(ms.ToArray());
+            throw new InvalidOperationException(
+                $"git {string.Join(' ', args)} failed ({p.ExitCode}): {err} {stdout}".Trim());
+        }
         return ms.ToArray();
     }
 

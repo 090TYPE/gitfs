@@ -17,7 +17,7 @@
 **Files:**
 - Create: `.gitignore` (шаблон dotnet)
 
-- [ ] **Step 1: Инициализировать репозиторий**
+- [x] **Step 1: Инициализировать репозиторий**
 
 ```bash
 cd /c/Users/090/Documents/GitHub/gitfs
@@ -25,7 +25,7 @@ git init -b main
 dotnet new gitignore
 ```
 
-- [ ] **Step 2: Закоммитить документы и дизайн**
+- [x] **Step 2: Закоммитить документы и дизайн**
 
 ```bash
 git add .gitignore docs/
@@ -41,7 +41,7 @@ Expected: коммит создан, `git status` чистый.
 **Files:**
 - Create: `gitfs.sln`, `src/Gitfs.Core/Gitfs.Core.csproj`, `tests/Gitfs.Core.Tests/Gitfs.Core.Tests.csproj`
 
-- [ ] **Step 1: Создать проекты**
+- [x] **Step 1: Создать проекты**
 
 ```bash
 cd /c/Users/090/Documents/GitHub/gitfs
@@ -53,12 +53,12 @@ dotnet add tests/Gitfs.Core.Tests reference src/Gitfs.Core
 rm src/Gitfs.Core/Class1.cs tests/Gitfs.Core.Tests/UnitTest1.cs
 ```
 
-- [ ] **Step 2: Проверить сборку**
+- [x] **Step 2: Проверить сборку**
 
 Run: `dotnet build gitfs.sln`
 Expected: Build succeeded, 0 Warning(s).
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add -A
@@ -73,7 +73,7 @@ git commit -m "build: solution scaffold (Gitfs.Core + tests, net8.0)"
 - Create: `src/Gitfs.Core/ObjectId.cs`
 - Test: `tests/Gitfs.Core.Tests/ObjectIdTests.cs`
 
-- [ ] **Step 1: Написать падающие тесты**
+- [x] **Step 1: Написать падающие тесты**
 
 ```csharp
 using Gitfs.Core;
@@ -124,12 +124,12 @@ public class ObjectIdTests
 }
 ```
 
-- [ ] **Step 2: Убедиться, что тесты падают**
+- [x] **Step 2: Убедиться, что тесты падают**
 
 Run: `dotnet test --filter ObjectIdTests`
 Expected: FAIL — `ObjectId` не существует (ошибка компиляции).
 
-- [ ] **Step 3: Реализация**
+- [x] **Step 3: Реализация**
 
 ```csharp
 using System.Buffers.Binary;
@@ -217,12 +217,12 @@ public readonly struct ObjectId : IEquatable<ObjectId>, IComparable<ObjectId>
 }
 ```
 
-- [ ] **Step 4: Тесты зелёные**
+- [x] **Step 4: Тесты зелёные**
 
 Run: `dotnet test --filter ObjectIdTests`
 Expected: PASS, 4 теста.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/Gitfs.Core/ObjectId.cs tests/Gitfs.Core.Tests/ObjectIdTests.cs
@@ -237,7 +237,7 @@ git commit -m "feat(core): ObjectId — 20-byte inline sha-1 with memcmp orderin
 - Create: `tests/Gitfs.Core.Tests/Fixtures/RepoBuilder.cs`
 - Test: `tests/Gitfs.Core.Tests/Fixtures/RepoBuilderTests.cs`
 
-- [ ] **Step 1: Написать падающий тест**
+- [x] **Step 1: Написать падающий тест**
 
 ```csharp
 using Gitfs.Core.Tests.Fixtures;
@@ -267,12 +267,12 @@ public class RepoBuilderTests
 }
 ```
 
-- [ ] **Step 2: Убедиться, что падает**
+- [x] **Step 2: Убедиться, что падает**
 
 Run: `dotnet test --filter RepoBuilderTests`
 Expected: FAIL (RepoBuilder не существует).
 
-- [ ] **Step 3: Реализация**
+- [x] **Step 3: Реализация**
 
 ```csharp
 using System.Diagnostics;
@@ -381,12 +381,12 @@ public sealed class RepoBuilder : IDisposable
 }
 ```
 
-- [ ] **Step 4: Тест зелёный**
+- [x] **Step 4: Тест зелёный**
 
 Run: `dotnet test --filter RepoBuilderTests`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add tests/Gitfs.Core.Tests/Fixtures/ tests/Gitfs.Core.Tests/RepoBuilderTests.cs
@@ -401,7 +401,7 @@ git commit -m "test(core): RepoBuilder fixture — real git, deterministic shas"
 - Create: `src/Gitfs.Core/GitObjectType.cs`, `src/Gitfs.Core/Objects/LooseObjectReader.cs`
 - Test: `tests/Gitfs.Core.Tests/LooseObjectReaderTests.cs`
 
-- [ ] **Step 1: Написать падающие дифференциальные тесты**
+- [x] **Step 1: Написать падающие дифференциальные тесты**
 
 ```csharp
 using Gitfs.Core;
@@ -490,12 +490,12 @@ public class LooseObjectReaderTests
 }
 ```
 
-- [ ] **Step 2: Убедиться, что падает**
+- [x] **Step 2: Убедиться, что падает**
 
 Run: `dotnet test --filter LooseObjectReaderTests`
 Expected: FAIL (типы не существуют).
 
-- [ ] **Step 3: Реализация — GitObjectType**
+- [x] **Step 3: Реализация — GitObjectType**
 
 ```csharp
 namespace Gitfs.Core;
@@ -510,7 +510,7 @@ public enum GitObjectType
 }
 ```
 
-- [ ] **Step 4: Реализация — LooseObjectReader**
+- [x] **Step 4: Реализация — LooseObjectReader**
 
 ```csharp
 using System.IO.Compression;
@@ -613,12 +613,12 @@ public sealed class LooseObjectReader
 }
 ```
 
-- [ ] **Step 5: Тесты зелёные**
+- [x] **Step 5: Тесты зелёные**
 
 Run: `dotnet test --filter LooseObjectReaderTests`
 Expected: PASS, 5 тестов, включая побайтовое совпадение с `git cat-file`.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/Gitfs.Core/GitObjectType.cs src/Gitfs.Core/Objects/ tests/Gitfs.Core.Tests/LooseObjectReaderTests.cs
@@ -633,7 +633,7 @@ git commit -m "feat(core): loose object reader, differential-tested against git 
 - Create: `src/Gitfs.Core/Refs/RefStore.cs`
 - Test: `tests/Gitfs.Core.Tests/RefStoreTests.cs`
 
-- [ ] **Step 1: Написать падающие дифференциальные тесты**
+- [x] **Step 1: Написать падающие дифференциальные тесты**
 
 ```csharp
 using Gitfs.Core;
@@ -720,12 +720,12 @@ public class RefStoreTests
 }
 ```
 
-- [ ] **Step 2: Убедиться, что падает**
+- [x] **Step 2: Убедиться, что падает**
 
 Run: `dotnet test --filter RefStoreTests`
 Expected: FAIL (RefStore не существует).
 
-- [ ] **Step 3: Реализация**
+- [x] **Step 3: Реализация**
 
 ```csharp
 namespace Gitfs.Core.Refs;
@@ -820,12 +820,12 @@ public sealed class RefStore
 }
 ```
 
-- [ ] **Step 4: Тесты зелёные**
+- [x] **Step 4: Тесты зелёные**
 
 Run: `dotnet test --filter RefStoreTests`
 Expected: PASS, 5 тестов.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/Gitfs.Core/Refs/ tests/Gitfs.Core.Tests/RefStoreTests.cs
@@ -836,12 +836,12 @@ git commit -m "feat(core): RefStore — packed-refs + loose + HEAD, differential
 
 ### Task 6: Полный прогон и фиксация плана
 
-- [ ] **Step 1: Все тесты**
+- [x] **Step 1: Все тесты**
 
 Run: `dotnet test gitfs.sln`
 Expected: PASS — 15 тестов (4 ObjectId + 1 RepoBuilder + 5 Loose + 5 RefStore), 0 failed.
 
-- [ ] **Step 2: Закоммитить план**
+- [x] **Step 2: Закоммитить план**
 
 ```bash
 git add docs/superpowers/plans/2026-08-07-gitfs-m1-loose-refs.md
