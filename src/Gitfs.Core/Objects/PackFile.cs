@@ -1,0 +1,207 @@
+using System.IO.Compression;
+using System.IO.MemoryMappedFiles;
+
+namespace Gitfs.Core.Objects;
+
+/// <summary>Пакет .pack поверх memory-mapped file: проекция одна, читать её
+/// многими потоками безопасно; на операцию открывается свой view-stream.
+/// Цепочки дельт разворачиваются итеративно (спека §6.4).</summary>
+public sealed class PackFile : IDisposable
+{
+    private const int MaxDeltaChain = 1000;
+
+    private readonly MemoryMappedFile _mmap;
+    private readonly long _length;
+    private readonly PackIndex _index;
+
+    private PackFile(MemoryMappedFile mmap, long length, PackIndex index)
+    {
+        _mmap = mmap;
+        _length = length;
+        _index = index;
+    }
+
+    public static PackFile Open(string packPath)
+    {
+        var index = PackIndex.Load(Path.ChangeExtension(packPath, ".idx"));
+        var length = new FileInfo(packPath).Length;
+        var mmap = MemoryMappedFile.CreateFromFile(packPath, FileMode.Open, null, 0,
+            MemoryMappedFileAccess.Read);
+        return new PackFile(mmap, length, index);
+    }
+
+    public bool Contains(in ObjectId id) => _index.TryFindOffset(id, out _);
+
+    public bool TryGetHeader(in ObjectId id, out GitObjectType type, out long size)
+    {
+        type = default;
+        size = 0;
+        if (!_index.TryFindOffset(id, out var offset)) return false;
+
+        // Тип — у базы цепочки; размер результата дельты — второй varint её тела.
+        var chain = 0;
+        while (true)
+        {
+            using var view = OpenView(offset);
+            var (raw, headerSize, dataStart) = ReadObjectHeader(view, offset);
+            if (raw is RawType.OfsDelta or RawType.RefDelta)
+            {
+                if (++chain > MaxDeltaChain) throw new InvalidDataException("delta chain too long");
+                var baseRef = ReadDeltaBase(view, raw, dataStart, out var deltaDataStart);
+                if (chain == 1)
+                {
+                    // размеры лежат в начале инфлированной дельты
+                    using var sizeView = OpenView(deltaDataStart);
+                    using var z = new ZLibStream(sizeView, CompressionMode.Decompress);
+                    Span<byte> prefix = stackalloc byte[32];
+                    var n = ReadUpTo(z, prefix);
+                    var (_, targetSize, _) = DeltaCodec.ReadSizes(prefix[..n]);
+                    size = targetSize;
+                }
+                offset = ResolveBaseOffset(baseRef, offset);
+                continue;
+            }
+            type = (GitObjectType)raw;
+            if (chain == 0) size = headerSize;
+            return true;
+        }
+    }
+
+    public bool TryReadObject(in ObjectId id, long maxBytes, out GitObjectType type, out byte[] data)
+    {
+        type = default;
+        data = [];
+        if (!_index.TryFindOffset(id, out var offset)) return false;
+
+        // Вниз по цепочке: собираем дельты в стек, находим базу; затем вверх — применяем.
+        var deltas = new Stack<byte[]>();
+        while (true)
+        {
+            using var view = OpenView(offset);
+            var (raw, size, dataStart) = ReadObjectHeader(view, offset);
+            if (raw is RawType.OfsDelta or RawType.RefDelta)
+            {
+                if (deltas.Count >= MaxDeltaChain) throw new InvalidDataException("delta chain too long");
+                var baseRef = ReadDeltaBase(view, raw, dataStart, out var deltaDataStart);
+                deltas.Push(Inflate(deltaDataStart, size, maxBytes));
+                offset = ResolveBaseOffset(baseRef, offset);
+                continue;
+            }
+            type = (GitObjectType)raw;
+            data = Inflate(dataStart, size, maxBytes);
+            break;
+        }
+        while (deltas.Count > 0)
+        {
+            data = DeltaCodec.Apply(data, deltas.Pop());
+            if (data.Length > maxBytes)
+                throw new InvalidDataException($"object {id} exceeds {maxBytes} bytes");
+        }
+        return true;
+    }
+
+    // --- низкоуровневое ---
+
+    private enum RawType { Commit = 1, Tree = 2, Blob = 3, Tag = 4, OfsDelta = 6, RefDelta = 7 }
+
+    private readonly record struct BaseRef(long OfsNegative, ObjectId? RefId);
+
+    private MemoryMappedViewStream OpenView(long offset) =>
+        _mmap.CreateViewStream(offset, _length - offset, MemoryMappedFileAccess.Read);
+
+    /// <summary>Читает заголовок объекта; возвращает тип, размер (для дельты —
+    /// размер дельты) и абсолютное смещение начала данных.</summary>
+    private static (RawType Type, long Size, long DataStart) ReadObjectHeader(Stream view, long offset)
+    {
+        var pos = 0L;
+        var b = ReadByteOrThrow(view);
+        pos++;
+        var type = (RawType)((b >> 4) & 0x7);
+        long size = b & 0xf;
+        var shift = 4;
+        while ((b & 0x80) != 0)
+        {
+            b = ReadByteOrThrow(view);
+            pos++;
+            size |= (long)(b & 0x7f) << shift;
+            shift += 7;
+        }
+        return (type, size, offset + pos);
+    }
+
+    /// <summary>Для дельты — читает ссылку на базу сразу после заголовка
+    /// (view уже спозиционирован там); возвращает её и абсолютное смещение
+    /// начала zlib-данных дельты.</summary>
+    private static BaseRef ReadDeltaBase(Stream view, RawType type, long dataStart,
+        out long deltaDataStart)
+    {
+        var consumed = 0L;
+        if (type == RawType.OfsDelta)
+        {
+            var b = ReadByteOrThrow(view);
+            consumed++;
+            long n = b & 0x7f;
+            while ((b & 0x80) != 0)
+            {
+                b = ReadByteOrThrow(view);
+                consumed++;
+                n = ((n + 1) << 7) | (uint)(b & 0x7f);
+            }
+            deltaDataStart = dataStart + consumed;
+            return new BaseRef(n, null);
+        }
+        Span<byte> raw = stackalloc byte[20];
+        for (var i = 0; i < 20; i++) raw[i] = (byte)ReadByteOrThrow(view);
+        deltaDataStart = dataStart + 20;
+        return new BaseRef(0, new ObjectId(raw));
+    }
+
+    private long ResolveBaseOffset(in BaseRef baseRef, long objOffset)
+    {
+        if (baseRef.RefId is { } refId)
+            return _index.TryFindOffset(refId, out var byId)
+                ? byId
+                : throw new InvalidDataException($"ref-delta base {refId} not in this pack");
+        var target = objOffset - baseRef.OfsNegative;
+        return target >= 12 && target < objOffset
+            ? target
+            : throw new InvalidDataException("ofs-delta base offset out of range");
+    }
+
+    private byte[] Inflate(long dataStart, long declaredSize, long maxBytes)
+    {
+        if (declaredSize > maxBytes)
+            throw new InvalidDataException($"packed entry of {declaredSize} bytes exceeds {maxBytes}");
+        using var view = OpenView(dataStart);
+        using var z = new ZLibStream(view, CompressionMode.Decompress);
+        var data = new byte[declaredSize];
+        var read = 0;
+        while (read < data.Length)
+        {
+            var n = z.Read(data, read, data.Length - read);
+            if (n == 0) throw new InvalidDataException("truncated packed object");
+            read += n;
+        }
+        return data;
+    }
+
+    private static int ReadByteOrThrow(Stream s)
+    {
+        var b = s.ReadByte();
+        return b >= 0 ? b : throw new InvalidDataException("unexpected end of pack");
+    }
+
+    private static int ReadUpTo(Stream s, Span<byte> buffer)
+    {
+        var total = 0;
+        while (total < buffer.Length)
+        {
+            var n = s.Read(buffer[total..]);
+            if (n == 0) break;
+            total += n;
+        }
+        return total;
+    }
+
+    public void Dispose() => _mmap.Dispose();
+}
