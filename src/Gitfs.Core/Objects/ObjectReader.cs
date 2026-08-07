@@ -3,8 +3,12 @@ namespace Gitfs.Core.Objects;
 /// <summary>Составной доступ к объектам: сначала loose (новее), затем пакеты.
 /// Набор пакетов фиксируется при создании — это будущая часть RepoSnapshot;
 /// переоткрытие после git gc (спека §7) появится вместе со снапшотами.</summary>
-public sealed class ObjectReader : IDisposable
+public sealed class ObjectReader : IObjectReader, IDisposable
 {
+    /// <summary>Потолок материализации дельты в OpenStream; настоящие лимиты
+    /// (--max-object-mb) применяет адаптер поверх (§15).</summary>
+    private const long StreamMaxBytes = 1L << 30;
+
     private readonly LooseObjectReader _loose;
     private readonly PackFile[] _packs;
 
@@ -48,6 +52,16 @@ public sealed class ObjectReader : IDisposable
         foreach (var pack in _packs)
             if (pack.TryGetHeader(id, out type, out size)) return true;
         return false;
+    }
+
+    public Stream OpenStream(in ObjectId id)
+    {
+        if (_loose.TryOpenStream(id, out _, out var looseSize) is { } looseStream)
+            return new LimitedReadStream(looseStream, looseSize);
+        foreach (var pack in _packs)
+            if (pack.TryOpenStream(id, StreamMaxBytes, out _, out _) is { } packStream)
+                return packStream;
+        throw new FileNotFoundException($"object not found: {id}");
     }
 
     public byte[] ReadAll(in ObjectId id, long maxBytes)
