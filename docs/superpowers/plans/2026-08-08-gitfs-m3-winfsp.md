@@ -1,40 +1,71 @@
-# gitfs M3: WinFsp-адаптер и первое монтирование — Implementation Plan
+# gitfs M3: адаптер WinFsp — Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: superpowers:executing-plans.
 
-**Goal:** `gitfs mount C:\repo G:` показывает историю в Проводнике. Путь к
-этому: CLI с честным `doctor`, `GitfsMountTarget` (read-путь IMountTarget
-поверх SnapshotManager + VirtualTree), адаптер на официальном биндинге
-`winfsp.net`, прототип «смонтировать пустое дерево» как гейт (спека §5).
+**Goal:** Первое настоящее монтирование: `gitfs mount C:\src\gitfs G:` даёт том,
+по которому ходит Проводник. Это веха «первый GIF» из спеки.
 
-**Подтверждённая зависимость (первый шаг M3 по спеке):** NuGet `winfsp.net`
-(официальный, netstandard2.0, без зависимостей; 2.2.x, август 2026).
-Сборка не требует драйвера; рантайм требует установленный WinFsp —
-установка драйвера в системе выполняется пользователем, не агентом.
+**Статус подготовки (сделано 2026-08-08):**
+- ядро чтения (M1) и виртуальное дерево (M2) готовы, 135 тестов;
+- долги к M3 закрыты: `DeltaBaseCache`, `SizeCache`, `IObjectReader.OpenStream`;
+- `Gitfs.Cli` умеет `doctor` (детектит отсутствие WinFsp) и `tree`
+  (обход того же дерева без монтирования);
+- биндинг подтверждён по факту: NuGet-пакет **`winfsp.net`**, актуальная
+  версия **2.2.26215** (03.08.2026), netstandard2.0, без зависимостей —
+  риск расписания «конкретный .NET-биндинг» из спеки §5 снят.
 
-**Порядок:**
+**БЛОКЕР (нужно действие пользователя):** WinFsp на машине не установлен
+(проверено: ключ `HKLM\SOFTWARE\WOW6432Node\WinFsp` отсутствует). Установка
+системного драйвера — не то, что агент делает молча. Скачать: winfsp.dev/rel,
+установка ~10 секунд, перезагрузка не нужна. После установки
+`gitfs doctor` покажет `ok winfsp <версия>` — это и есть сигнал, что M3
+можно исполнять.
 
-### Task 1: Gitfs.Cli + doctor (без драйвера) — ЭТОТ ПЛАН ИСПОЛНЯЕТ
-- Проект `Gitfs.Cli` (net8.0, ноль NuGet) + `Gitfs.Cli.Tests`.
-- `DoctorCheck`/`DoctorReport` — чистая модель и рендерер сетки из дизайна:
-  статус 4 знака (`ok  `/`warn`/`fail`), имя 22, значение; fail → строка
-  «→ что сделать» и ссылка; итог «N ok · N warning · N failure»; ANSI
-  только в интерактивном терминале и без `NO_COLOR`; exit code 1 при fail.
-- Проверки: winfsp (dll в Program Files (x86)\WinFsp + версия из
-  FileVersionInfo), git в PATH (+версия), свободные буквы дисков;
-  для указанного репо: наличие .git, формат хеша (extensions.objectFormat),
-  commit-graph, multi-pack-index, shallow.
-- `list` — пока «no mounts» (реестр монтирований придёт с mount).
-- Тесты: рендерер (обе ветки цвета), проверки репо на фикстуре RepoBuilder
-  (sha256-репо через `git init --object-format=sha256`, shallow через
-  `git clone --depth 1 file://`), doctor на текущей машине не бросает.
+---
 
-### Task 2: скаффолд Gitfs.Mount.WinFsp
-- Проект + PackageReference winfsp.net; компилируемый каркас
-  `GitfsFileSystem : Fsp.FileSystemBase` за `#if`-барьером не нужен —
-  пакет чисто managed; сборка обязана быть зелёной без драйвера.
+### Task 1: Проект адаптера
 
-### Task 3 (после установки WinFsp пользователем): прототип пустого дерева,
-затем GitfsMountTarget: GetVolumeInfo/GetSecurityByName/Open/GetFileInfo/
-ReadDirectory/Read поверх VirtualTree; refcount снапшотов на границе
-операции (долг M2); трансля
+`dotnet new classlib -n Gitfs.Mount.WinFsp -o src/Gitfs.Mount.WinFsp -f net8.0`;
+`dotnet add package winfsp.net`; ссылки на Core и Vfs; `net8.0-windows`
+не требуется (пакет netstandard2.0). Сборка обязана проходить БЕЗ драйвера —
+драйвер нужен только в рантайме.
+
+### Task 2: IMountTarget (§11)
+
+`Gitfs.Vfs/IMountTarget.cs` — контракт из спеки: `Lookup`, `List`, `Open`,
+`Read`, `Write`, `Close`, `GetVolumeInfo`; `GitfsResult<T>` + `GitfsError`
+(включая `NotADirectory`, добавленный по ревью M2). Реализация
+`VfsMountTarget` поверх `SnapshotManager` + `VirtualTree`:
+- `Read` через `IObjectReader.OpenStream` с окном (offset/length);
+- refcount снапшота на границе операции — закрывает долг M2 №1;
+- тесты на поддельном таргете уже есть, добавить тесты самого таргета.
+
+### Task 3: Адаптер
+
+`GitfsFileSystem : Fsp.FileSystemBase` — трансляция вызовов WinFsp в
+`IMountTarget` и кодов ошибок в NTSTATUS по таблице §12. Правило границы:
+**ни одно исключение не покидает колбэк** — внешний try/catch в каждом,
+трансляция в код + запись в лог.
+
+Обязательные детали: том объявляется регистронезависимым и
+регистросохраняющим; метка тома `gitfs: <имя репозитория>`; ёмкость —
+суммарный размер `.git/objects`, свободно 0; `ReadDirectory` отдаёт
+`.` и `..` там, где WinFsp этого ждёт.
+
+### Task 4: CLI mount/unmount/list
+
+`gitfs mount <repo> <target>` поднимает `FileSystemHost`, `unmount` снимает,
+`list` показывает активные монтирования. Ошибки — по эталонным текстам
+дизайна («что случилось → как починить»).
+
+### Task 5: Приёмка
+
+- `dir G:\`, `dir G:\branches\main`, `type G:\branches\main\README.md`;
+- `findstr` по смонтированному дереву;
+- открытие файла двумя процессами;
+- размонтирование при открытом хендле — внятный отказ;
+- скриншот/GIF: терминал → Проводник → `branches` → файл открывается.
+
+## Вне плана
+`history/`, `commits/`, `dates/` — M4. Overlay — M5. FUSE — M6.
+Перф-долги вьюх (реестр M2 п.4) — к M4 вместе с кэшами §7.
