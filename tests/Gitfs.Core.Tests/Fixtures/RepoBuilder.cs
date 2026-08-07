@@ -75,6 +75,38 @@ public sealed class RepoBuilder : IDisposable
 
     public void Branch(string name) => Run("branch", name);
 
+    public void Checkout(string name) => Run("checkout", "-q", name);
+
+    /// <summary>Merge-коммит с двумя родителями (first-parent — текущая ветка).</summary>
+    public string Merge(string branch)
+    {
+        Run("merge", "--no-ff", "-m", $"merge {branch}", branch);
+        return Run("rev-parse", "HEAD").Trim();
+    }
+
+    public string RunWithInput(byte[] input, params string[] args)
+    {
+        var psi = new ProcessStartInfo("git")
+        {
+            WorkingDirectory = Root,
+            RedirectStandardInput = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+        };
+        foreach (var (k, v) in Env) psi.Environment[k] = v;
+        foreach (var a in args) psi.ArgumentList.Add(a);
+        using var p = Process.Start(psi)!;
+        p.StandardInput.BaseStream.Write(input);
+        p.StandardInput.Close();
+        var stdout = p.StandardOutput.ReadToEnd();
+        var err = p.StandardError.ReadToEnd();
+        p.WaitForExit();
+        if (p.ExitCode != 0)
+            throw new InvalidOperationException($"git {string.Join(' ', args)} failed ({p.ExitCode}): {err}");
+        return stdout;
+    }
+
     public void Tag(string name, bool annotated = false, string? message = null)
     {
         if (annotated) Run("tag", "-a", name, "-m", message ?? name);
