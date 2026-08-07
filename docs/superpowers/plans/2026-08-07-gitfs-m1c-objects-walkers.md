@@ -17,7 +17,7 @@
 **Files:**
 - Modify: `tests/Gitfs.Core.Tests/Fixtures/RepoBuilder.cs`
 
-- [ ] **Step 1: Добавить хелперы**
+- [x] **Step 1: Добавить хелперы**
 
 ```csharp
     public void Checkout(string name) => Run("checkout", "-q", name);
@@ -53,8 +53,8 @@
     }
 ```
 
-- [ ] **Step 2: Прогнать существующие тесты (регрессия)** — `dotnet test` зелёный.
-- [ ] **Step 3: Commit** — `test(core): RepoBuilder — checkout, merge, stdin piping`
+- [x] **Step 2: Прогнать существующие тесты (регрессия)** — `dotnet test` зелёный.
+- [x] **Step 3: Commit** — `test(core): RepoBuilder — checkout, merge, stdin piping`
 
 ---
 
@@ -64,7 +64,7 @@
 - Create: `src/Gitfs.Core/TreeEntry.cs`
 - Test: `tests/Gitfs.Core.Tests/TreeObjectTests.cs`
 
-- [ ] **Step 1: Падающие дифференциальные тесты**
+- [x] **Step 1: Падающие дифференциальные тесты**
 
 Фикстура кладёт в один коммит все пять режимов (обычный, исполняемый через
 `--chmod=+x`, симлинк и gitlink через `--cacheinfo`, директория) плюс
@@ -72,12 +72,12 @@
 Дополнительно: сортировка записей сохранена как в объекте; неизвестный режим
 и обрыв записи → `InvalidDataException`.
 
-- [ ] **Step 2: Красная фаза.**
-- [ ] **Step 3: Реализация** — `GitFileMode`, `readonly struct TreeEntry`,
+- [x] **Step 2: Красная фаза.**
+- [x] **Step 3: Реализация** — `GitFileMode`, `readonly struct TreeEntry`,
   `TreeObject.Parse(byte[])` со строгим маппингом режимов
   (40000, 100644, 100755, 120000, 160000; прочее — ошибка).
-- [ ] **Step 4: Зелёная фаза.**
-- [ ] **Step 5: Commit** — `feat(core): tree object parser — all five modes, differential vs ls-tree`
+- [x] **Step 4: Зелёная фаза.**
+- [x] **Step 5: Commit** — `feat(core): tree object parser — all five modes, differential vs ls-tree`
 
 ---
 
@@ -87,7 +87,7 @@
 - Create: `src/Gitfs.Core/CommitObject.cs`
 - Test: `tests/Gitfs.Core.Tests/CommitObjectTests.cs`
 
-- [ ] **Step 1: Падающие тесты**
+- [x] **Step 1: Падающие тесты**
 
 Эталон — `git log -1 --format=%T/%P/%an/%ae/%at/%cn/%ce/%ct/%B`:
 корневой коммит (0 родителей), обычный (1), merge (2, порядок родителей =
@@ -95,14 +95,14 @@ first-parent первым), многострочное сообщение. Кр�
 (continuation-строки) через `hash-object -t commit -w --stdin` — парсер обязан
 пропустить подпись и сохранить остальные поля байт-в-байт.
 
-- [ ] **Step 2: Красная фаза.**
-- [ ] **Step 3: Реализация** — `readonly struct Signature` (Name, Email,
+- [x] **Step 2: Красная фаза.**
+- [x] **Step 3: Реализация** — `readonly struct Signature` (Name, Email,
   DateTimeOffset из unix-времени и смещения ±HHMM), `sealed class CommitObject`
   с `Parse(ObjectId, byte[])`: заголовки до пустой строки, множественные
   `parent`, continuation-строки (ведущий пробел) и незнакомые заголовки —
   пропуск; сообщение — остаток без изменений.
-- [ ] **Step 4: Зелёная фаза.**
-- [ ] **Step 5: Commit** — `feat(core): commit parser — merge parents, signatures, gpgsig tolerance`
+- [x] **Step 4: Зелёная фаза.**
+- [x] **Step 5: Commit** — `feat(core): commit parser — merge parents, signatures, gpgsig tolerance`
 
 ---
 
@@ -112,16 +112,16 @@ first-parent первым), многострочное сообщение. Кр�
 - Create: `src/Gitfs.Core/TagObject.cs`
 - Test: `tests/Gitfs.Core.Tests/TagObjectTests.cs`
 
-- [ ] **Step 1: Падающие тесты** — аннотированный тег: `object`/`type`/`tag`
+- [x] **Step 1: Падающие тесты** — аннотированный тег: `object`/`type`/`tag`
   поля против `git cat-file tag` и `rev-parse v1.0^{commit}`; разыменование
   цепочки tag→commit через `ObjectReader` (peel для loose-тегов, которого
   нет в packed-refs).
-- [ ] **Step 2: Красная фаза.**
-- [ ] **Step 3: Реализация** — `sealed class TagObject` с `Parse` тем же
+- [x] **Step 2: Красная фаза.**
+- [x] **Step 3: Реализация** — `sealed class TagObject` с `Parse` тем же
   заголовочным разбором + статический `Peel(ObjectReader, ObjectId)` —
   идёт по цепочке тегов до не-тега (страж глубины 32).
-- [ ] **Step 4: Зелёная фаза.**
-- [ ] **Step 5: Commit** — `feat(core): tag object parser and peel chain`
+- [x] **Step 4: Зелёная фаза.**
+- [x] **Step 5: Commit** — `feat(core): tag object parser and peel chain`
 
 ---
 
@@ -131,15 +131,15 @@ first-parent первым), многострочное сообщение. Кр�
 - Create: `src/Gitfs.Core/Walk/TreeWalker.cs`
 - Test: `tests/Gitfs.Core.Tests/TreeWalkerTests.cs`
 
-- [ ] **Step 1: Падающие тесты** — резолв `src/Program.cs` против
+- [x] **Step 1: Падающие тесты** — резолв `src/Program.cs` против
   `git rev-parse HEAD:src/Program.cs`; резолв директории `src` против
   `HEAD:src`; отсутствующий путь → null; путь сквозь блоб
   (`README.md/x`) → null; пустой путь → сама корневая директория.
-- [ ] **Step 2: Красная фаза.**
-- [ ] **Step 3: Реализация** — `TreeWalker(ObjectReader)`,
+- [x] **Step 2: Красная фаза.**
+- [x] **Step 3: Реализация** — `TreeWalker(ObjectReader)`,
   `TreeEntry? TryResolve(in ObjectId rootTree, ReadOnlySpan<string> segments)`.
-- [ ] **Step 4: Зелёная фаза.**
-- [ ] **Step 5: Commit** — `feat(core): TreeWalker — path resolution over tree objects`
+- [x] **Step 4: Зелёная фаза.**
+- [x] **Step 5: Commit** — `feat(core): TreeWalker — path resolution over tree objects`
 
 ---
 
@@ -149,26 +149,26 @@ first-parent первым), многострочное сообщение. Кр�
 - Create: `src/Gitfs.Core/Walk/RevWalker.cs`
 - Test: `tests/Gitfs.Core.Tests/RevWalkerTests.cs`
 
-- [ ] **Step 1: Падающие тесты** — последовательность OID против
+- [x] **Step 1: Падающие тесты** — последовательность OID против
   `git rev-list --first-parent HEAD` (история с merge — второй родитель
   не посещается); обход от середины истории; ленивость — `Take(2)` на
   длинной истории не читает её целиком (проверка через счётчик
   прочитанных коммитов у обёртки-ридера не нужна: достаточно факта, что
   Take(2) возвращает первые два и не падает на битом далёком родителе —
   упрощаем: просто равенство префикса).
-- [ ] **Step 2: Красная фаза.**
-- [ ] **Step 3: Реализация** — `RevWalker(ObjectReader)`,
+- [x] **Step 2: Красная фаза.**
+- [x] **Step 3: Реализация** — `RevWalker(ObjectReader)`,
   `IEnumerable<CommitObject> FirstParent(ObjectId from)` — ленивый
   `yield`, страж от циклов не нужен (DAG), лимитов нет (лимитируют вьюхи).
-- [ ] **Step 4: Зелёная фаза.**
-- [ ] **Step 5: Commit** — `feat(core): RevWalker — lazy first-parent traversal`
+- [x] **Step 4: Зелёная фаза.**
+- [x] **Step 5: Commit** — `feat(core): RevWalker — lazy first-parent traversal`
 
 ---
 
 ### Task 7: Полный прогон
 
-- [ ] `dotnet test gitfs.slnx` — все зелёные.
-- [ ] Коммит плана.
+- [x] `dotnet test gitfs.slnx` — все зелёные.
+- [x] Коммит плана.
 
 ## Вне этого плана
 
