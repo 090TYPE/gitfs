@@ -114,11 +114,28 @@ public sealed class BranchesView : IView
         return set;
     }
 
+    /// <summary>null — ветка бита: висячий ref, не-коммит, слишком большой
+    /// объект. Один битый ref не должен ронять листинг всей вьюхи (ревью M2).</summary>
     private static CommitObject? TipCommit(RepoSnapshot snapshot, string branch)
     {
         if (!snapshot.Refs.TryResolve(Prefix + branch, out var entry)) return null;
-        return CommitObject.Parse(entry.Target,
-            snapshot.Objects.ReadAll(entry.Target, MaxCommitBytes));
+        var id = entry.Target;
+        if (!snapshot.Objects.TryGetHeader(id, out var type, out _)) return null;
+        if (type == GitObjectType.Tag)
+        {
+            // plumbing позволяет ветку на тег — peel до коммита, как rev-parse
+            try { (id, type) = TagObject.Peel(snapshot.Objects, id); }
+            catch (Exception e) when (e is InvalidDataException or FileNotFoundException) { return null; }
+        }
+        if (type != GitObjectType.Commit) return null;
+        try
+        {
+            return CommitObject.Parse(id, snapshot.Objects.ReadAll(id, MaxCommitBytes));
+        }
+        catch (Exception e) when (e is InvalidDataException or FileNotFoundException)
+        {
+            return null;
+        }
     }
 
     private DateTimeOffset ViewTimestamp(RepoSnapshot snapshot)

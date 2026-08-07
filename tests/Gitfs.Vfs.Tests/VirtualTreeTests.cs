@@ -13,15 +13,25 @@ public class VirtualTreeTests
     private static RepoBuilder BuildRepo()
     {
         var repo = new RepoBuilder();
+        // git на Windows сам блокирует aux.c в индексе (core.protectNTFS) —
+        // ровно тот класс реп «созданных на Linux», ради которого существует %RES
+        repo.Run("config", "core.protectNTFS", "false");
         repo.WriteFile("README.md", "hello\n");
         repo.WriteFile("src/Program.cs", "class P {}\n");
         repo.WriteFile("src/утилиты.cs", "// юникод\n");
         var lower = repo.RunWithInput("lower\n"u8.ToArray(), "hash-object", "-w", "--stdin").Trim();
         var upper = repo.RunWithInput("UPPER\n"u8.ToArray(), "hash-object", "-w", "--stdin").Trim();
+        var auxBlob = repo.RunWithInput("aux!\n"u8.ToArray(), "hash-object", "-w", "--stdin").Trim();
+        var linkTarget = repo.RunWithInput("README.md"u8.ToArray(), "hash-object", "-w", "--stdin").Trim();
         repo.Run("add", "-A");
         repo.Run("update-index", "--add", "--cacheinfo", $"100644,{upper},case/README");
         repo.Run("update-index", "--add", "--cacheinfo", $"100644,{lower},case/readme");
+        repo.Run("update-index", "--add", "--cacheinfo", $"100644,{auxBlob},aux.c");
+        repo.Run("update-index", "--add", "--cacheinfo", $"120000,{linkTarget},link");
         repo.Run("commit", "-m", "base");
+        var baseSha = repo.Run("rev-parse", "HEAD").Trim();
+        repo.Run("update-index", "--add", "--cacheinfo", $"160000,{baseSha},sub");
+        repo.Run("commit", "-m", "base+gitlink");
         repo.Branch("feature/login");
         repo.WriteFile("src/Program.cs", "class P { int X; }\n");
         // не add -A: он синхронизировал бы индекс с рабочей копией и удалил
@@ -149,6 +159,107 @@ public class VirtualTreeTests
         Assert.NotEqual(upper.Value.BlobId, lower.Value.BlobId);
         // сырое имя второго файла НЕ резолвится — только отображаемое
         Assert.Null(tree.Resolve(snap, "branches/main/case/readme"));
+    }
+
+    [Fact]
+    public void Symlink_and_gitlink_have_their_kinds_and_gitlink_blocks_descent()
+    {
+        using var repo = BuildRepo();
+        var (snap, tree) = Open(repo);
+        using var _ = snap;
+
+        var link = tree.Resolve(snap, "branches/main/link");
+        Assert.Equal(NodeKind.Symlink, link!.Value.Kind);
+        Assert.Equal(9, link.Value.Size); // len("README.md")
+
+        var sub = tree.Resolve(snap, "branches/main/sub");
+        Assert.Equal(NodeKind.Submodule, sub!.Value.Kind);
+        Assert.Equal(0, sub.Value.Size);
+        Assert.Null(tree.Resolve(snap, "branches/main/sub/anything")); // сквозь гитлинк нельзя
+    }
+
+    [Fact]
+    public void Reserved_name_roundtrips_through_display_name()
+    {
+        using var repo = BuildRepo();
+        var (snap, tree) = Open(repo);
+        using var _ = snap;
+
+        Assert.Contains("aux%RES.c",
+            tree.List(snap, "branches/main")!.Select(e => e.Name).ToArray());
+        var node = tree.Resolve(snap, "branches/main/aux%RES.c");
+        Assert.Equal(repo.Run("rev-parse", "main:aux.c").Trim(), node!.Value.BlobId.ToString());
+        Assert.Null(tree.Resolve(snap, "branches/main/aux.c")); // сырое имя не резолвится
+    }
+
+    [Fact]
+    public void Broken_ref_yields_null_not_exception_and_does_not_break_listing()
+    {
+        using var repo = BuildRepo();
+        File.WriteAllText(Path.Combine(repo.GitDir, "refs", "heads", "broken"),
+            new string('a', 40) + "\n"); // висячий ref на несуществующий объект
+        var (snap, tree) = Open(repo);
+        using var _ = snap;
+
+        Assert.Null(tree.Resolve(snap, "branches/broken"));
+        Assert.Empty(tree.List(snap, "branches/broken")!);
+        // один битый ref не ломает перечисление всей вьюхи
+        Assert.Contains("broken", tree.List(snap, "branches")!.Select(e => e.Name).ToArray());
+    }
+
+    [Fact]
+    public void Deleting_a_branch_with_older_mtime_is_detected()
+    {
+        using var repo = BuildRepo();
+        repo.Run("branch", "victim");
+        repo.Run("branch", "newer");
+        // victim заведомо не носитель max(mtime) — max-подпись была бы слепа
+        File.SetLastWriteTimeUtc(Path.Combine(repo.GitDir, "refs", "heads", "victim"),
+            DateTime.UtcNow.AddMinutes(-5));
+        var manager = new SnapshotManager(repo.GitDir);
+        Assert.True(manager.Current.Refs.All.ContainsKey("refs/heads/victim"));
+
+        repo.Run("branch", "-D", "victim");
+        Assert.False(manager.Refresh(force: true).Refs.All.ContainsKey("refs/heads/victim"));
+    }
+
+    [Fact]
+    public void Throttle_swallows_changes_until_window_passes()
+    {
+        using var repo = BuildRepo();
+        var manager = new SnapshotManager(repo.GitDir, TimeSpan.FromMinutes(10));
+        var first = manager.Current;
+        repo.WriteFile("t.txt", "x\n");
+        repo.Run("add", "t.txt");
+        repo.Run("commit", "-m", "change");
+        Assert.Same(first, manager.Refresh());              // окно не прошло
+        Assert.NotSame(first, manager.Refresh(force: true)); // force обходит троттлинг
+    }
+
+    [Fact]
+    public void Root_listing_date_agrees_with_view_resolve_date()
+    {
+        using var repo = BuildRepo();
+        var (snap, tree) = Open(repo);
+        using var _ = snap;
+
+        var entry = tree.List(snap, "/")!.Single(e => e.Name == "branches");
+        var resolved = tree.Resolve(snap, "/branches");
+        Assert.Equal(resolved!.Value.Timestamp, entry.Info.Timestamp);
+        var headDate = long.Parse(repo.Run("log", "-1", "--format=%ct", "HEAD").Trim());
+        Assert.Equal(headDate, entry.Info.Timestamp.ToUnixTimeSeconds());
+    }
+
+    [Fact]
+    public void List_rejects_dot_paths_and_unknown_views()
+    {
+        using var repo = BuildRepo();
+        var (snap, tree) = Open(repo);
+        using var _ = snap;
+
+        Assert.Null(tree.List(snap, "branches/../etc"));
+        Assert.Null(tree.List(snap, "branches/main/./src"));
+        Assert.Null(tree.List(snap, "/nosuch"));
     }
 
     [Fact]

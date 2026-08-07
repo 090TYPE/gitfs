@@ -54,6 +54,12 @@ public sealed class TreeObject
             var name = Encoding.UTF8.GetString(data.Slice(pos, nul));
             pos += nul + 1;
 
+            // Инвариант формата, не политика отображения (ревью M2): git fsck
+            // такие деревья отвергает, а gitfs fsck не запускает — валидируем сами,
+            // иначе '.', '..' и 'a/b' утекут в адаптер ФС как имена записей.
+            if (name.Length == 0 || name is "." or ".." || name.Contains('/'))
+                throw new InvalidDataException($"invalid tree entry name '{name}'");
+
             if (pos + ObjectId.RawLength > data.Length)
                 throw new InvalidDataException("tree entry: truncated object id");
             var id = new ObjectId(data.Slice(pos, ObjectId.RawLength));

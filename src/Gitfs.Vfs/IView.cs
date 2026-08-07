@@ -9,5 +9,11 @@ public interface IView
 {
     string Name { get; }
     NodeInfo? Resolve(RepoSnapshot snapshot, IReadOnlyList<string> segments);
+
+    /// <summary>Контракт (ревью M2): List осмыслен только для путей, где
+    /// Resolve вернул Directory; для файла или несуществующего пути результат —
+    /// пустая последовательность, неотличимая от пустой директории. Адаптер
+    /// обязан сначала Resolve и транслировать не-директорию в NotADirectory
+    /// (§11/§12), а не полагаться на пустоту List.</summary>
     IEnumerable<DirEntry> List(RepoSnapshot snapshot, IReadOnlyList<string> segments);
 }

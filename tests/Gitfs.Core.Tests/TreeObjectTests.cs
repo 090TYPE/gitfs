@@ -82,6 +82,19 @@ public class TreeObjectTests
         Assert.Contains(src.Entries, e => e.Name == "утилиты.cs");
     }
 
+    [Theory]
+    [InlineData(".")]
+    [InlineData("..")]
+    [InlineData("a/b")]
+    public void Malicious_entry_names_are_rejected(string name)
+    {
+        // формат позволяет любое NUL-терминированное имя; git fsck такое
+        // отвергает, gitfs обязан сам — иначе '.'/'..' утекут в адаптер ФС
+        var bytes = System.Text.Encoding.UTF8.GetBytes($"100644 {name}\0")
+            .Concat(new byte[20]).ToArray();
+        Assert.Throws<InvalidDataException>(() => TreeObject.Parse(bytes));
+    }
+
     [Fact]
     public void Unknown_mode_and_truncated_entry_throw()
     {
