@@ -18,7 +18,7 @@ public static class PathGrammar
     /// <summary>Наибольшее совпадение по списку известных ссылок (спека §4):
     /// «feature/login/src/f.cs» при ветках {feature/login} → (feature/login, [src, f.cs]).
     /// null — ни один префикс не является полным именем ссылки.</summary>
-    public static (string RefName, ArraySegment<string> Rest)? MatchLongestRef(
+    public static (string RefName, ArraySegment<string> Tail)? MatchLongestRef(
         IReadOnlySet<string> refNames, string[] segments)
     {
         for (var k = segments.Length; k >= 1; k--)

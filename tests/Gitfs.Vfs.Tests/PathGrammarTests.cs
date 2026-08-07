@@ -31,7 +31,7 @@ public class PathGrammarTests
     {
         var m = PathGrammar.MatchLongestRef(Refs, new[] { "feature", "login", "src", "f.cs" });
         Assert.Equal("feature/login", m!.Value.RefName);
-        Assert.Equal(new[] { "src", "f.cs" }, m.Value.Rest);
+        Assert.Equal(new[] { "src", "f.cs" }, m.Value.Tail);
     }
 
     [Fact]
@@ -39,7 +39,7 @@ public class PathGrammarTests
     {
         var m = PathGrammar.MatchLongestRef(Refs, new[] { "main" });
         Assert.Equal("main", m!.Value.RefName);
-        Assert.Empty(m.Value.Rest);
+        Assert.Empty(m.Value.Tail);
     }
 
     [Fact]
