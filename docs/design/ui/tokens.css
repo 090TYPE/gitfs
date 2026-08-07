@@ -1,0 +1,64 @@
+/* gitfs — токены поверх Nocturne.
+   Решения из канвы «gitfs UI.dc.html»:
+   — моноширинная роль (JetBrains Mono, веб-замена Cascadia Code) строго для данных:
+     пути, sha, вывод CLI, имена вьюх; проза — Inter;
+   — семантика ok/warn/err выведена в OKLCH на светлоте и цветности акцента,
+     меняется только тон (152° / 80° / 25°) — ничто не путается с акцентом;
+   — терминал всегда тёмный, в обеих темах (--term не переопределяется). */
+
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap');
+
+:root {
+  --mono: 'JetBrains Mono', 'Cascadia Code', ui-monospace, Consolas, monospace;
+
+  --ok:   oklch(0.74 0.115 152);
+  --warn: oklch(0.80 0.130 80);
+  --err:  oklch(0.66 0.160 25);
+  --ok-fill:   oklch(0.30 0.055 152);
+  --warn-fill: oklch(0.32 0.065 80);
+  --err-fill:  oklch(0.30 0.075 25);
+
+  --term: color-mix(in srgb, #161826 74%, #000);
+
+  /* Текстовые роли акцента, безопасные для обеих тем: в тёмной — светлые ступени
+     рампы, в светлой переопределяются на тёмные. Компоненты используют их,
+     а не сырые ступени рампы. */
+  --accent-ink:        var(--color-accent-300);
+  --accent-ink-strong: var(--color-accent-200);
+  --accent-wash:       color-mix(in srgb, var(--color-accent) 12%, transparent);
+}
+
+/* Светлая тема — из светлых карточек канвы: ground neutral-100, акцент accent-600.
+   Семантика пересчитана вниз по светлоте, тон сохранён. */
+:root[data-theme="light"] {
+  --color-bg: #f3f5fe;
+  --color-surface: #ffffff;
+  --color-text: #24262f;
+  --color-accent: #796cbf;
+  --color-accent-2: #7972a9;
+  --color-divider: color-mix(in srgb, #24262f 16%, transparent);
+
+  --ok:   oklch(0.50 0.115 152);
+  --warn: oklch(0.53 0.125 80);
+  --err:  oklch(0.52 0.160 25);
+  --ok-fill:   oklch(0.94 0.045 152);
+  --warn-fill: oklch(0.95 0.055 80);
+  --err-fill:  oklch(0.94 0.050 25);
+
+  --shadow-sm: 0 0 0 1px #cfd3e5;
+  --shadow-md: 0 0 0 1px #cfd3e5, 0 6px 18px rgba(30, 34, 60, 0.14);
+  --shadow-lg: 0 0 0 1px #b2b6ca, 0 16px 40px rgba(30, 34, 60, 0.20);
+
+  --accent-ink:        var(--color-accent-700);
+  --accent-ink-strong: var(--color-accent-800);
+  --accent-wash:       color-mix(in srgb, var(--color-accent) 10%, transparent);
+}
+
+/* Пульс деградации — из канвы (docs-site · reopening…) */
+@keyframes gfsPulse {
+  0%, 100% { opacity: .3 }
+  50%      { opacity: 1 }
+}
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important }
+}
