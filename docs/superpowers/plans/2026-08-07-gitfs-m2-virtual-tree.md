@@ -14,7 +14,7 @@
 
 ### Task 1: Скаффолд Gitfs.Vfs
 
-- [ ] `dotnet new classlib -n Gitfs.Vfs -o src/Gitfs.Vfs -f net8.0`; `dotnet new xunit -n Gitfs.Vfs.Tests -o tests/Gitfs.Vfs.Tests -f net8.0`; ссылки Vfs→Core, Vfs.Tests→{Vfs, Core, Core.Tests}; добавить в slnx; сборка зелёная; коммит `build: Gitfs.Vfs project scaffold`.
+- [x] `dotnet new classlib -n Gitfs.Vfs -o src/Gitfs.Vfs -f net8.0`; `dotnet new xunit -n Gitfs.Vfs.Tests -o tests/Gitfs.Vfs.Tests -f net8.0`; ссылки Vfs→Core, Vfs.Tests→{Vfs, Core, Core.Tests}; добавить в slnx; сборка зелёная; коммит `build: Gitfs.Vfs project scaffold`.
 
 ### Task 2: NamePolicy (чистые функции, TDD)
 
@@ -68,7 +68,7 @@ VirtualTree: корень перечисляет вьюхи; `Resolve/List(path)
 
 ### Task 6: Полный прогон + фиксация
 
-- [ ] `dotnet test gitfs.slnx` — все зелёные; коммит плана; адверсариальное ревью воркфлоу (NamePolicy-краи, снапшот-гонки, дифференциальная достаточность).
+- [x] `dotnet test gitfs.slnx` — все зелёные; коммит плана; адверсариальное ревью воркфлоу (NamePolicy-краи, снапшот-гонки, дифференциальная достаточность).
 
 ## Зафиксированный долг M2
 
