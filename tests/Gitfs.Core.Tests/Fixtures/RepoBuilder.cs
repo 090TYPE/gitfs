@@ -81,6 +81,29 @@ public sealed class RepoBuilder : IDisposable
         else Run("tag", name);
     }
 
+    /// <summary>Упаковывает все объекты в один pack (loose исчезают).</summary>
+    public void Repack() => Run("repack", "-a", "-d");
+
+    public string[] IndexFiles() =>
+        Directory.GetFiles(Path.Combine(GitDir, "objects", "pack"), "*.idx");
+
+    public sealed record PackEntry(string Sha, string Type, long Size, long Offset, int Depth);
+
+    /// <summary>Разбор `git verify-pack -v`: эталон смещений и глубин дельт.</summary>
+    public IReadOnlyList<PackEntry> VerifyPack(string idxPath)
+    {
+        var entries = new List<PackEntry>();
+        foreach (var line in Run("verify-pack", "-v", idxPath).Split('\n'))
+        {
+            var parts = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length < 5 || parts[0].Length != 40) continue;
+            if (parts[1] is not ("commit" or "tree" or "blob" or "tag")) continue;
+            entries.Add(new PackEntry(parts[0], parts[1], long.Parse(parts[2]),
+                long.Parse(parts[4]), parts.Length >= 7 ? int.Parse(parts[5]) : 0));
+        }
+        return entries;
+    }
+
     /// <summary>Все объекты репозитория: sha + тип, эталон — сам git.</summary>
     public IEnumerable<(string Sha, string Type)> AllObjects()
     {
