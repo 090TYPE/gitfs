@@ -1,0 +1,171 @@
+# Спека §17: CI обязан монтировать по-настоящему, а не только собирать.
+# Юнит-тесты проверяют всё ниже границы IMountTarget, но каждый дефект,
+# который стоил пользователю работоспособности, жил ВЫШЕ неё — в договоре
+# с ядром. Поэтому оба контура заканчиваются приёмкой на живом томе.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: 1
+  DOTNET_NOLOGO: 1
+  # фикстуры собираются настоящим git; автор и дата фиксированы, чтобы SHA
+  # были детерминированы
+  GIT_AUTHOR_NAME: gitfs
+  GIT_AUTHOR_EMAIL: gitfs@example.com
+  GIT_COMMITTER_NAME: gitfs
+  GIT_COMMITTER_EMAIL: gitfs@example.com
+
+jobs:
+  linux:
+    name: linux · fuse3
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # приёмка сверяется с историей, не с одним коммитом
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: install fuse3
+        run: sudo apt-get update && sudo apt-get install -y fuse3 libfuse3-dev pkg-config
+
+      # Раскладка структур libfuse снимается на РАННЕРЕ и сверяется с
+      # фикстурой. Это ловит то, чего не поймает ни один тест на моей
+      # машине: другая версия libfuse или другой дистрибутив, изменивший
+      # порядок полей. Ошибка в смещении не даёт ошибки компиляции.
+      - name: the ABI has not moved under us
+        run: |
+          gcc -o /tmp/probe tools/fuse-abi-probe.c $(pkg-config --cflags --libs fuse3)
+          /tmp/probe > /tmp/abi-here.txt
+          if ! diff -u tests/Gitfs.Mount.Fuse.Tests/fixtures/fuse-abi.txt /tmp/abi-here.txt; then
+            echo "::error::libfuse layout on this runner differs from the committed fixture"
+            echo "the adapter writes function pointers at fixed offsets — this must be resolved,"
+            echo "not papered over by regenerating the fixture"
+            exit 1
+          fi
+
+      - name: unit tests
+        run: |
+          for project in tests/Gitfs.Core.Tests tests/Gitfs.Vfs.Tests tests/Gitfs.Mount.Fuse.Tests; do
+            dotnet test "$project" -c Release --nologo
+          done
+
+      - name: publish
+        run: |
+          dotnet publish src/Gitfs.Cli -c Release -r linux-x64 --self-contained false \
+            -p:PublishSingleFile=true -o dist/linux-x64 --nologo
+
+      - name: mount a real volume and run acceptance
+        run: |
+          mkdir -p /tmp/gitfs-mount
+          ./dist/linux-x64/gitfs mount "$PWD" /tmp/gitfs-mount &
+          mount_pid=$!
+          for _ in $(seq 1 40); do mountpoint -q /tmp/gitfs-mount && break; sleep 0.25; done
+          if ! mountpoint -q /tmp/gitfs-mount; then
+            echo "::error::the volume never appeared"
+            exit 1
+          fi
+          status=0
+          tools/acceptance.sh /tmp/gitfs-mount "$PWD" || status=1
+          # второй прогон по тому же тому: набор обязан быть повторяемым
+          tools/acceptance.sh /tmp/gitfs-mount "$PWD" || status=1
+          kill -TERM "$mount_pid" 2>/dev/null || true
+          wait "$mount_pid" 2>/dev/null || true
+          if mountpoint -q /tmp/gitfs-mount; then
+            echo "::error::still mounted after SIGTERM"
+            status=1
+          fi
+          left=$(ls "${XDG_STATE_HOME:-$HOME/.local/state}/gitfs/overlay" 2>/dev/null | wc -l)
+          if [ "$left" -ne 0 ]; then
+            echo "::error::$left sandbox directory(ies) left behind after unmount"
+            status=1
+          fi
+          exit $status
+
+      # Инвариант, ради которого написан весь проект. Проверяется отдельным
+      # шагом, а не только внутри приёмки: если сломается именно он, это
+      # должно быть видно в списке шагов, а не в 27-й строке лога.
+      - name: THE REPOSITORY WAS NEVER MODIFIED
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "::error::the volume changed the repository"
+            git status --porcelain
+            exit 1
+          fi
+
+  windows:
+    name: windows · winfsp
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      # Версия закреплена намеренно и обязана совпадать с PackageReference
+      # winfsp.net в src/Gitfs.Mount.WinFsp/Gitfs.Mount.WinFsp.csproj:
+      # биндинг отвергает драйвер с другим major.minor («incorrect dll
+      # version, need 2.2, have 2.1»), и это уже стоило одного вечера.
+      # Плавающая версия здесь означает зелёный CI ровно до дня выхода
+      # следующего WinFsp. Если пакета такой версии в choco нет, шаг обязан
+      # упасть громко, а не поставить «что нашлось».
+      - name: install winfsp 2.1.24255
+        run: choco install winfsp --version=2.1.24255 -y --no-progress
+
+      - name: unit tests
+        run: dotnet test gitfs.slnx -c Release --nologo
+
+      - name: publish
+        shell: pwsh
+        run: ./tools/publish.ps1
+
+      - name: mount a real volume and run acceptance
+        shell: pwsh
+        run: |
+          $mount = Start-Process ./dist/win-x64/gitfs.exe -ArgumentList 'mount', $PWD, 'G:' -PassThru
+          for ($i = 0; $i -lt 40; $i++) { if (Test-Path G:\) { break }; Start-Sleep -Milliseconds 250 }
+          if (-not (Test-Path G:\)) { Write-Error 'the volume never appeared' }
+
+          $failed = $false
+          ./tools/acceptance.ps1 G: $PWD; if ($LASTEXITCODE -ne 0) { $failed = $true }
+          # второй прогон по тому же тому: набор обязан быть повторяемым
+          ./tools/acceptance.ps1 G: $PWD; if ($LASTEXITCODE -ne 0) { $failed = $true }
+
+          Stop-Process -Id $mount.Id -Force -ErrorAction SilentlyContinue
+          Start-Sleep -Seconds 2
+          ./dist/win-x64/gitfs.exe purge
+          if ($failed) { Write-Error 'acceptance failed' }
+
+      - name: THE REPOSITORY WAS NEVER MODIFIED
+        shell: pwsh
+        run: |
+          $dirty = git status --porcelain
+          if ($dirty) { $dirty; Write-Error 'the volume changed the repository' }
+
+  benchmarks:
+    name: performance budgets
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      # Бюджеты §16 меряются на репозитории самого gitfs: он мал, поэтому
+      # порог «первое открытие history» здесь ничего не доказывает — на
+      # 10 001 коммите цифры в README. Смысл шага в другом: поймать
+      # регрессию, при которой бюджет перестаёт выполняться ВООБЩЕ.
+      - name: measure
+        run: dotnet run -c Release --project tools/Gitfs.Bench -- "$PWD"

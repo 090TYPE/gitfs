@@ -24,6 +24,10 @@ function Check($name, [scriptblock]$body) {
 
 function RunGit([string[]]$a) { $out = & git -C $Repo @a 2>$null; return ($out -join "`n") }
 
+# Состояние репозитория ДО того, как том к нему прикоснулся. С ним
+# сверяется главный инвариант в самом конце.
+$script:baseline = RunGit @("status","--porcelain")
+
 Write-Host "=== gitfs acceptance on $Drive ===" -ForegroundColor Cyan
 
 # ---------- volume and tree ----------
@@ -229,9 +233,26 @@ Check "overlay covers an immutable view (commits)" {
 }
 
 # ---------- the invariant that matters ----------
+# Сравнивается СОСТОЯНИЕ ДО и ПОСЛЕ по всему репозиторию, а не одна строка
+# про LICENSE. Прежняя проверка искала в git status слово «LICENSE» — и
+# перестала значить хоть что-нибудь в тот момент, когда сценарии записи
+# переехали на другие файлы: том мог править .gitignore и gitfs.slnx, а
+# главный инвариант проекта продолжал рапортовать «ok».
+#
+# Требовать при этом ЧИСТЫЙ git status тоже нельзя: приёмку запускают на
+# рабочей копии с правками, и она падала бы на них, ничего не сообщая о томе.
+# Вопрос ровно один: изменил ли что-нибудь ТОМ.
 Check "REPOSITORY IS UNTOUCHED" {
-    $status = RunGit @("status","--porcelain")
-    if ($status -match "LICENSE") { return "git status shows LICENSE changed: $status" }
+    $now = RunGit @("status","--porcelain")
+    if ($now -ne $script:baseline) {
+        $before = @($script:baseline -split "`n")
+        $after = @($now -split "`n")
+        $changed = @(Compare-Object $before $after | ForEach-Object {
+            "$($_.SideIndicator) $($_.InputObject)"
+        }) -join "; "
+        return "the volume changed the repository: $changed"
+    }
+    # и содержимое опорного файла в самой базе объектов не поехало
     $len = [int]((RunGit @("cat-file","-s","HEAD:LICENSE")).Trim())
     if ($len -lt 1000) { return "LICENSE in git is now $len bytes" }
     return $null
