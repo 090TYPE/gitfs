@@ -3,12 +3,18 @@
   <ItemGroup>
     <ProjectReference Include="..\Gitfs.Core\Gitfs.Core.csproj" />
     <ProjectReference Include="..\Gitfs.Vfs\Gitfs.Vfs.csproj" />
-    <ProjectReference Include="..\Gitfs.Mount.WinFsp\Gitfs.Mount.WinFsp.csproj" />
     <ProjectReference Include="..\Gitfs.Diagnostics\Gitfs.Diagnostics.csproj" />
   </ItemGroup>
 
+  <!-- адаптер выбирается по целевой платформе -->
+  <Import Project="..\Gitfs.Platform.props" />
+
   <PropertyGroup>
     <OutputType>Exe</OutputType>
+    <!-- команда называется gitfs во всей документации; пусть и бинарник
+         называется так же, а не Gitfs.Cli -->
+    <AssemblyName>gitfs</AssemblyName>
+    <RootNamespace>Gitfs.Cli</RootNamespace>
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>

@@ -30,15 +30,16 @@
     <ProjectReference Include="..\Gitfs.Diagnostics\Gitfs.Diagnostics.csproj" />
   </ItemGroup>
 
-  <!-- Адаптер WinFsp только под Windows: на Linux/macOS проект собирается
-       без него, монтирование блокируется до вехи M6 (FUSE). -->
-  <ItemGroup Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::Windows)))' == 'true'">
-    <ProjectReference Include="..\Gitfs.Mount.WinFsp\Gitfs.Mount.WinFsp.csproj" />
+  <!-- адаптер выбирается по целевой платформе: WinFsp под Windows,
+       FUSE под Linux; macOS ждёт macFUSE (веха M8) -->
+  <Import Project="..\Gitfs.Platform.props" />
+
+  <ItemGroup Condition="'$(GitfsTargetWindows)' == 'true'">
     <PackageReference Include="Avalonia.Win32" Version="11.2.3" />
   </ItemGroup>
 
-  <PropertyGroup Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::Windows)))' == 'true'">
-    <DefineConstants>$(DefineConstants);GITFS_WINFSP</DefineConstants>
-  </PropertyGroup>
+  <ItemGroup Condition="'$(GitfsTargetLinux)' == 'true'">
+    <PackageReference Include="Avalonia.X11" Version="11.2.3" />
+  </ItemGroup>
 
 </Project>

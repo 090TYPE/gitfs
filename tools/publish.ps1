@@ -17,7 +17,7 @@ $root = Split-Path -Parent $PSScriptRoot
 $out = Join-Path $root "dist/$Runtime"
 
 # работающий exe нельзя перезаписать: publish упадёт на UnauthorizedAccess
-$busy = Get-Process -Name 'Gitfs.App', 'Gitfs.Cli' -ErrorAction SilentlyContinue
+$busy = Get-Process -Name 'Gitfs.App', 'gitfs' -ErrorAction SilentlyContinue
 if ($busy) {
     $names = ($busy | ForEach-Object { "$($_.ProcessName) (pid $($_.Id))" }) -join ', '
     Write-Error "close these first, they hold the published binaries: $names"
@@ -36,7 +36,7 @@ foreach ($project in $projects) {
 
 # Дымовая проверка: бинарник обязан хотя бы отвечать. Полную проверку
 # монтирования делает tools/acceptance.ps1 на живом томе.
-$cli = Join-Path $out 'Gitfs.Cli.exe'
+$cli = Join-Path $out 'gitfs.exe'
 & $cli doctor $root | Out-Null
 if ($LASTEXITCODE -gt 1) { Write-Error "published cli is broken: doctor exited $LASTEXITCODE" }
 

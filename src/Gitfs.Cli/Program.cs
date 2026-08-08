@@ -3,8 +3,13 @@ using Gitfs.Diagnostics;
 using Gitfs.Core;
 using Gitfs.Vfs;
 using Gitfs.Vfs.Views;
-using Gitfs.Mount.WinFsp;
 using Gitfs.Vfs.Overlay;
+#if GITFS_WINFSP
+using Gitfs.Mount.WinFsp;
+#endif
+#if GITFS_FUSE
+using Gitfs.Mount.Fuse;
+#endif
 
 if (args.Length == 0 || args[0] is "-h" or "--help" or "help")
 {
@@ -189,6 +194,11 @@ static int Mount(string[] rest)
     }
     var repoPath = Path.GetFullPath(rest[0]);
     var mountPoint = rest[1];
+#if !GITFS_WINFSP && !GITFS_FUSE
+    Console.Error.WriteLine("fail gitfs cannot mount on this platform yet");
+    Console.Error.WriteLine("     → macOS needs macFUSE (milestone M8); gitfs tree works everywhere");
+    return 1;
+#else
 
     var checks = Doctor.Run(repoPath);
     var blockers = checks.Where(c => c.Status == CheckStatus.Fail).ToList();
@@ -209,26 +219,45 @@ static int Mount(string[] rest)
     var target = new VfsMountTarget(manager, tree, name, readOnly: false, overlay: overlay);
 
     var started = DateTime.UtcNow;
+    void Log(string line) => Console.Error.WriteLine($"     {line}");
     try
     {
-        using var mount = GitfsMount.Mount(target, mountPoint,
-            line => Console.Error.WriteLine($"     {line}"), readOnly: false);
+#if GITFS_WINFSP
+        using var mount = GitfsMount.Mount(target, mountPoint, Log, readOnly: false);
+#else
+        using var mount = GitfsFuseMount.Mount(target, mountPoint, Log, readOnly: false);
+#endif
         var elapsed = (DateTime.UtcNow - started).TotalSeconds;
         Console.WriteLine($"mounted {mountPoint} · {name} · 5 views · {elapsed:0.0}s");
         Console.WriteLine("press Ctrl+C to unmount");
 
         using var stop = new ManualResetEventSlim();
         Console.CancelKeyPress += (_, e) => { e.Cancel = true; stop.Set(); };
+        // SIGTERM тоже снимает том: без этого docker stop и systemd оставляли
+        // бы точку монтирования висеть, а песочницу — на диске
+        AppDomain.CurrentDomain.ProcessExit += (_, _) => stop.Set();
+        System.Runtime.InteropServices.PosixSignalRegistration.Create(
+            System.Runtime.InteropServices.PosixSignal.SIGTERM,
+            context => { context.Cancel = true; stop.Set(); });
         stop.Wait();
         Console.WriteLine($"unmounting {mountPoint}");
         return 0;
     }
+#if GITFS_WINFSP
     catch (MountException e)
     {
         Console.Error.WriteLine($"fail {e.Message}");
         Console.Error.WriteLine($"     → install it from {Doctor.WinFspDownload} and run gitfs doctor again");
         return 1;
     }
+#else
+    catch (FuseMountException e)
+    {
+        Console.Error.WriteLine($"fail {e.Message}");
+        return 1;
+    }
+#endif
+#endif
 }
 
 /// <summary>Том живёт внутри процесса `gitfs mount`, поэтому снимает его

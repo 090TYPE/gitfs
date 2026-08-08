@@ -1,0 +1,38 @@
+<Project>
+
+  <!--
+    Какой адаптер файловой системы попадает в сборку.
+
+    Ориентир — ЦЕЛЕВАЯ платформа (RuntimeIdentifier), а не машина, на которой
+    идёт сборка. Условие по хосту выглядит так же и работает так же ровно до
+    первой кросс-публикации: `dotnet publish -r linux-x64` с Windows собрал бы
+    Linux-бинарник с адаптером WinFsp внутри и без FUSE.
+
+    Без RuntimeIdentifier (обычный dotnet build, тесты) берём хост — там
+    целевая платформа и есть текущая.
+  -->
+  <PropertyGroup>
+    <GitfsTargetWindows Condition="$(RuntimeIdentifier.StartsWith('win'))">true</GitfsTargetWindows>
+    <GitfsTargetLinux Condition="$(RuntimeIdentifier.StartsWith('linux'))">true</GitfsTargetLinux>
+
+    <GitfsTargetWindows Condition="'$(RuntimeIdentifier)' == '' and $([MSBuild]::IsOSPlatform('Windows'))">true</GitfsTargetWindows>
+    <GitfsTargetLinux Condition="'$(RuntimeIdentifier)' == '' and $([MSBuild]::IsOSPlatform('Linux'))">true</GitfsTargetLinux>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(GitfsTargetWindows)' == 'true'">
+    <DefineConstants>$(DefineConstants);GITFS_WINFSP</DefineConstants>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(GitfsTargetLinux)' == 'true'">
+    <DefineConstants>$(DefineConstants);GITFS_FUSE</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(GitfsTargetWindows)' == 'true'">
+    <ProjectReference Include="$(MSBuildThisFileDirectory)Gitfs.Mount.WinFsp\Gitfs.Mount.WinFsp.csproj" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(GitfsTargetLinux)' == 'true'">
+    <ProjectReference Include="$(MSBuildThisFileDirectory)Gitfs.Mount.Fuse\Gitfs.Mount.Fuse.csproj" />
+  </ItemGroup>
+
+</Project>

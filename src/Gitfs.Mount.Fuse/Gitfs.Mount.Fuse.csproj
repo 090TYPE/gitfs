@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <!-- адаптер живёт указателями: без этого не написать ни таблицу
+         операций, ни колбэк, который ядро вызовет напрямую -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- смещения структур и таблица errno проверяются без монтирования -->
+    <InternalsVisibleTo Include="Gitfs.Mount.Fuse.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Gitfs.Core\Gitfs.Core.csproj" />
+    <ProjectReference Include="..\Gitfs.Vfs\Gitfs.Vfs.csproj" />
+  </ItemGroup>
+
+</Project>

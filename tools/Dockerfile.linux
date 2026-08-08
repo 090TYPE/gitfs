@@ -1,0 +1,20 @@
+# Linux-контур gitfs: сборка, тесты и НАСТОЯЩЕЕ монтирование через FUSE.
+#
+# Монтирование требует /dev/fuse и права SYS_ADMIN, поэтому контейнер
+# запускается так (см. tools/linux-check.sh):
+#   docker run --device /dev/fuse --cap-add SYS_ADMIN --security-opt apparmor=unconfined
+#
+# Без этих ключей соберётся и пройдут юнит-тесты, но том не создастся —
+# и это будет честно видно в выводе, а не молча пропущено.
+FROM mcr.microsoft.com/dotnet/sdk:8.0
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        git fuse3 libfuse3-dev pkg-config gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+# фикстуры тестов собираются настоящим git с фиксированными автором и датой
+ENV GIT_AUTHOR_NAME=gitfs GIT_AUTHOR_EMAIL=gitfs@example.com \
+    GIT_COMMITTER_NAME=gitfs GIT_COMMITTER_EMAIL=gitfs@example.com \
+    DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1
+
+WORKDIR /work
