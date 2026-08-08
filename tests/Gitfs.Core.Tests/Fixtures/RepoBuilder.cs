@@ -28,6 +28,13 @@ public sealed class RepoBuilder : IDisposable
         Run("init", "-b", "main");
         Run("config", "gc.auto", "0");
         Run("config", "core.autocrlf", "false");
+        // Рефлога у фикстуры быть не должно. Он нужен для интерактивной
+        // работы, ни один тест его не читает, а `git repack -a -d` обходит
+        // его при подсчёте достижимости — и на раннере CI это дало
+        // «reflog of HEAD references pruned commits» с падением всего
+        // прогона. Фикстура обязана зависеть только от того, что сама
+        // создала.
+        Run("config", "core.logAllRefUpdates", "false");
     }
 
     public string Run(params string[] args) =>

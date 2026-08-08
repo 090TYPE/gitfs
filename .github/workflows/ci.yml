@@ -112,15 +112,29 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
-      # Версия закреплена намеренно и обязана совпадать с PackageReference
-      # winfsp.net в src/Gitfs.Mount.WinFsp/Gitfs.Mount.WinFsp.csproj:
-      # биндинг отвергает драйвер с другим major.minor («incorrect dll
-      # version, need 2.2, have 2.1»), и это уже стоило одного вечера.
-      # Плавающая версия здесь означает зелёный CI ровно до дня выхода
-      # следующего WinFsp. Если пакета такой версии в choco нет, шаг обязан
-      # упасть громко, а не поставить «что нашлось».
-      - name: install winfsp 2.1.24255
-        run: choco install winfsp --version=2.1.24255 -y --no-progress
+      # MSI из релиза, а не choco: пакета winfsp в Chocolatey нет вовсе —
+      # первый же прогон CI ответил «The package was not found with the
+      # source(s) listed». Ссылка на ассет релиза неизменна, поэтому
+      # закрепление здесь настоящее, а не «последняя, какая найдётся».
+      #
+      # Версия обязана совпадать по major.minor с PackageReference winfsp.net
+      # в src/Gitfs.Mount.WinFsp/Gitfs.Mount.WinFsp.csproj: биндинг отвергает
+      # драйвер с другим major.minor («incorrect dll version, need 2.2,
+      # have 2.1»), и это уже стоило одного вечера. Номер сборки может
+      # отличаться — проверяется только major.minor.
+      - name: install winfsp 2.1
+        shell: pwsh
+        run: |
+          $url = 'https://github.com/winfsp/winfsp/releases/download/v2.1/winfsp-2.1.25156.msi'
+          $msi = Join-Path $env:RUNNER_TEMP 'winfsp.msi'
+          Invoke-WebRequest -Uri $url -OutFile $msi
+          $p = Start-Process msiexec -ArgumentList '/i', "`"$msi`"", '/qn', 'INSTALLLEVEL=1000' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { Write-Error "msiexec exited $($p.ExitCode)" }
+          # Драйвер обязан быть виден именно там, где его ищет doctor,
+          # иначе следующие шаги упадут с менее внятным сообщением
+          $key = Get-ItemProperty 'HKLM:\SOFTWARE\WOW6432Node\WinFsp' -ErrorAction SilentlyContinue
+          if (-not $key.InstallDir) { Write-Error 'WinFsp installed but the registry key is missing' }
+          "installed to $($key.InstallDir)"
 
       - name: unit tests
         run: dotnet test gitfs.slnx -c Release --nologo
