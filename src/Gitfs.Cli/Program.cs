@@ -269,8 +269,13 @@ static int Mount(string[] rest)
 #if GITFS_WINFSP
     catch (MountException e)
     {
+        // Совет берётся из самой ошибки. Раньше сюда безусловно
+        // приклеивалось «поставьте WinFsp» — и на «1: это не буква диска»
+        // пользователь получал предложение переустановить драйвер, то есть
+        // ложный след вместо подсказки.
         Console.Error.WriteLine($"fail {e.Message}");
-        Console.Error.WriteLine($"     → install it from {Doctor.WinFspDownload} and run gitfs doctor again");
+        if (e.Message.Contains("WinFsp", StringComparison.OrdinalIgnoreCase))
+            Console.Error.WriteLine($"     → install it from {Doctor.WinFspDownload} and run gitfs doctor again");
         return 1;
     }
 #else

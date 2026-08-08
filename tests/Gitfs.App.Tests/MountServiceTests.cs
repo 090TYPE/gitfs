@@ -131,9 +131,14 @@ public class MountServiceTests
         return Directory.Exists(root) ? Directory.GetDirectories(root).Length : 0;
     }
 
+    /// <summary>Точка монтирования, которую адаптер обязан отвергнуть НЕ
+    /// обращаясь к драйверу. Первая версия брала здесь системный диск — и
+    /// на машине с установленным WinFsp попытка встать поверх C: не
+    /// возвращалась вовсе: этот тест подвесил CI на сорок минут. Тест не
+    /// имеет права трогать драйвер ради проверки учёта ресурсов.</summary>
     private static string ImpossibleMountPoint() => OperatingSystem.IsWindows()
-        ? Path.GetPathRoot(Environment.SystemDirectory)!.TrimEnd('\\')   // буква занята
-        : "/nonexistent-" + Guid.NewGuid().ToString("N")[..8];           // каталога нет
+        ? "1:"                                                  // не буква диска
+        : "/nonexistent-" + Guid.NewGuid().ToString("N")[..8];  // каталога нет
 
     [Fact]
     public void A_failed_mount_does_not_leave_the_repository_locked()
@@ -147,10 +152,7 @@ public class MountServiceTests
         repo.Repack();                    // теперь есть packfile, который можно удержать
         var root = repo.Root;
 
-        var impossible = OperatingSystem.IsWindows()
-            ? Path.GetPathRoot(Environment.SystemDirectory)!.TrimEnd('\\')
-            : "/nonexistent-" + Guid.NewGuid().ToString("N")[..8];
-        Assert.ThrowsAny<Exception>(() => service.Mount(root, impossible, AllViews));
+        Assert.ThrowsAny<Exception>(() => service.Mount(root, ImpossibleMountPoint(), AllViews));
 
         GC.Collect();
         GC.WaitForPendingFinalizers();
