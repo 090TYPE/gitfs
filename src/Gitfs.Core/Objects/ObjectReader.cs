@@ -11,9 +11,11 @@ public sealed class ObjectReader : IObjectReader, IDisposable
 
     private readonly LooseObjectReader _loose;
     private readonly PackFile[] _packs;
+    private readonly string _gitDir;
 
     public ObjectReader(string gitDir)
     {
+        _gitDir = gitDir;
         _loose = new LooseObjectReader(gitDir);
         var packDir = Path.Combine(gitDir, "objects", "pack");
         var packs = new List<PackFile>();
@@ -52,6 +54,46 @@ public sealed class ObjectReader : IObjectReader, IDisposable
         foreach (var pack in _packs)
             if (pack.TryGetHeader(id, out type, out size)) return true;
         return false;
+    }
+
+    /// <summary>Единственный объект с данным hex-префиксом; null — не найден
+    /// ИЛИ найдено больше одного (спека §4: неоднозначный префикс — не выбор
+    /// первого попавшегося). Перф-долг: линейное сканирование по пакам и
+    /// каталогам loose; ускорить бинарным поиском по отсортированной таблице
+    /// .idx — к M7 вместе с бенчмарками.</summary>
+    public ObjectId? FindByPrefix(string hexPrefix)
+    {
+        ObjectId? found = null;
+        bool Accept(in ObjectId candidate)
+        {
+            if (!candidate.ToString().StartsWith(hexPrefix, StringComparison.Ordinal)) return true;
+            if (found is not null) { found = null; return false; } // неоднозначно
+            found = candidate;
+            return true;
+        }
+
+        // loose: имя каталога — первые два символа, файла — остальные
+        var looseDir = Path.Combine(_gitDir, "objects");
+        if (Directory.Exists(looseDir) && hexPrefix.Length >= 2)
+        {
+            var bucket = Path.Combine(looseDir, hexPrefix[..2]);
+            if (Directory.Exists(bucket))
+            {
+                foreach (var file in Directory.EnumerateFiles(bucket))
+                {
+                    var hex = hexPrefix[..2] + Path.GetFileName(file);
+                    if (!ObjectId.TryParse(hex, out var id)) continue;
+                    if (!Accept(id)) return null;
+                }
+            }
+        }
+
+        foreach (var pack in _packs)
+            foreach (var id in pack.ObjectIds)
+                if (!Accept(id))
+                    return null;
+
+        return found;
     }
 
     public Stream OpenStream(in ObjectId id)

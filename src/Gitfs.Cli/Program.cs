@@ -43,6 +43,20 @@ static void PrintUsage()
         """);
 }
 
+/// <summary>Все пять вьюх спеки §3 плюс политика имён текущей платформы.</summary>
+static VirtualTree BuildTree()
+{
+    var names = NamePolicy.For(NamePolicyKind.Native);
+    return new VirtualTree(new IView[]
+    {
+        new BranchesView(names),
+        new TagsView(names),
+        new CommitsView(names),
+        new DatesView(names),
+        new HistoryView(names),
+    });
+}
+
 static int Doctor(string[] rest)
 {
     var repo = rest.FirstOrDefault();
@@ -69,7 +83,7 @@ static int Tree(string[] rest)
     }
 
     using var snapshot = RepoSnapshot.Load(gitDir);
-    var tree = new VirtualTree(new IView[] { new BranchesView(NamePolicy.For(NamePolicyKind.Native)) });
+    var tree = BuildTree();
     var path = rest.Length > 1 ? rest[1] : "/";
 
     var node = tree.Resolve(snapshot, path);
@@ -121,7 +135,7 @@ static int Mount(string[] rest)
 
     var gitDir = Diagnostics.ResolveGitDir(repoPath)!;
     var manager = new SnapshotManager(gitDir);
-    var tree = new VirtualTree(new IView[] { new BranchesView(NamePolicy.For(NamePolicyKind.Native)) });
+    var tree = BuildTree();
     var name = new DirectoryInfo(repoPath).Name;
     var target = new VfsMountTarget(manager, tree, name);
 

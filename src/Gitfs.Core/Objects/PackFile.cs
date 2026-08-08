@@ -48,6 +48,9 @@ public sealed class PackFile : IDisposable
 
     public bool Contains(in ObjectId id) => _index.TryFindOffset(id, out _);
 
+    /// <summary>Все OID пакета в порядке .idx (отсортированы).</summary>
+    public IEnumerable<ObjectId> ObjectIds => _index.ObjectIds;
+
     public bool TryGetHeader(in ObjectId id, out GitObjectType type, out long size)
     {
         if (_sizes.TryGet(id, out var cached))

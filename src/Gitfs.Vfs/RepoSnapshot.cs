@@ -1,3 +1,4 @@
+using Gitfs.Core;
 using Gitfs.Core.Objects;
 using Gitfs.Core.Refs;
 using Gitfs.Core.Walk;
@@ -20,6 +21,19 @@ public sealed class RepoSnapshot : IDisposable
     public ObjectReader Objects { get; }
     public TreeWalker Trees { get; }
     public RevWalker Revs { get; }
+
+    /// <summary>Кэши, привязанные к снапшоту (перф-долг M2 п.4). Снапшот
+    /// иммутабелен, поэтому инвалидация не нужна вовсе: смена эпохи создаёт
+    /// новый снапшот с пустыми кэшами.</summary>
+    public LruCache<ObjectId, TreeObject> TreeCache { get; } =
+        new(4096, _ => 1);
+    /// <summary>ref-имя → вершина (null — битая ветка). Листинг корня вьюхи
+    /// иначе парсит коммит на каждую ветку при каждом перечислении.</summary>
+    public System.Collections.Concurrent.ConcurrentDictionary<string, CommitObject?> TipCache { get; } = new();
+    /// <summary>OID дерева → отображаемые имена. Чистая функция от
+    /// иммутабельного объекта при фиксированной политике имён.</summary>
+    public LruCache<ObjectId, IReadOnlyList<DisplayName>> ListingCache { get; } =
+        new(4096, _ => 1);
 
     private RepoSnapshot(string gitDir, RefStore refs, ObjectReader objects)
     {
