@@ -21,9 +21,28 @@ public sealed class RepoBuilder : IDisposable
         ("GIT_CONFIG_NOSYSTEM", "1"),
     };
 
+    /// <summary>Имена уже созданных фикстур. Dispose сносит свой каталог
+    /// рекурсивно, поэтому два экземпляра с одинаковым именем — это не
+    /// «маловероятно», а порча: близнец удаляет объекты живого репозитория
+    /// прямо посреди работы, и git падает на чтении того, что сам записал.
+    /// Ровно так это и выглядело на раннере CI — 44 объекта вместо сотни и
+    /// оборванная связь до родителя. Пусть лучше будет громкая ошибка
+    /// здесь, чем расследование там.</summary>
+    private static readonly HashSet<string> Taken = new(StringComparer.Ordinal);
+
     public RepoBuilder()
     {
-        Root = Path.Combine(Path.GetTempPath(), "gitfs-fixture-" + Guid.NewGuid().ToString("N")[..8]);
+        // Полный GUID и номер процесса вместо восьми знаков: тридцати двух
+        // бит уникальности недостаточно, когда цена совпадения — молча
+        // испорченный репозиторий.
+        Root = Path.Combine(Path.GetTempPath(),
+            $"gitfs-fixture-{Environment.ProcessId}-{Guid.NewGuid():N}");
+        lock (Taken)
+        {
+            if (!Taken.Add(Root))
+                throw new InvalidOperationException(
+                    $"two fixtures claimed the same directory: {Root}");
+        }
         Directory.CreateDirectory(Root);
         Run("init", "-b", "main");
         Run("config", "gc.auto", "0");
@@ -94,6 +113,7 @@ public sealed class RepoBuilder : IDisposable
             sb.Append("\n  temp root: ").Append(Path.GetTempPath());
             sb.Append("\n  sibling fixtures: ").Append(
                 Directory.EnumerateDirectories(Path.GetTempPath(), "gitfs-fixture-*").Count());
+            lock (Taken) sb.Append("\n  fixtures created by this process: ").Append(Taken.Count);
             sb.Append("\n  fsck: ").Append(Quiet("fsck", "--connectivity-only"));
         }
         catch (Exception e) { sb.Append("\n  (diagnosis failed: ").Append(e.Message).Append(')'); }
