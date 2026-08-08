@@ -146,11 +146,23 @@ Check "random access (seek)" {
     return $null
 }
 Check "copying a file off the volume" {
+    # Эталон — git, а не файл в рабочей копии: том отдаёт содержимое
+    # репозитория, и рабочая копия законно отличается от него, например
+    # переносами строк после нормализации.
+    # Сравнение идёт по SHA, который git считает сам. Забирать блоб через
+    # `git cat-file blob > файл` нельзя: PowerShell 5.1 перекодирует вывод
+    # нативной команды в UTF-16 и меняет переносы — файл на 1073 байта
+    # превращается в 2190, и проверка обвиняет том в собственной ошибке.
     $tmp = Join-Path $env:TEMP "gitfs-copy-test.bin"
     Copy-Item "$Drive\branches\main\LICENSE" $tmp -Force
+    $copiedSha = (& git -C $Repo hash-object $tmp).Trim()
     $len = (Get-Item $tmp).Length
     Remove-Item $tmp -Force -ErrorAction SilentlyContinue
-    if ($len -lt 100) { return "copy is $len bytes" }
+
+    $wantSha = (& git -C $Repo rev-parse "HEAD:LICENSE").Trim()
+    if ($copiedSha -ne $wantSha) {
+        return "copied $len bytes hashing to $copiedSha, git blob is $wantSha"
+    }
     return $null
 }
 Check "missing path is reported missing" {
@@ -165,8 +177,11 @@ Check "a directory is not readable as a file" {
 }
 
 # ---------- overlay ----------
+# Пишем НЕ в LICENSE: его читают проверки выше, а запись живёт до конца
+# жизни тома. Иначе второй прогон по тому же тому обвиняет том в том, что
+# натворил первый — набор, который можно запустить один раз, это ловушка.
 Check "overwrite yields exactly what was written" {
-    $p = "$Drive\branches\main\LICENSE"
+    $p = "$Drive\branches\main\.gitignore"
     $text = "OVERLAY-WRITE-CHECK"
     [System.IO.File]::WriteAllText($p, $text)
     $back = [System.IO.File]::ReadAllText($p)
@@ -191,9 +206,22 @@ Check "deleting a file" {
     if (Test-Path $p) { return "still there" }
     return $null
 }
+Check "delete then recreate a file from the repository" {
+    # Удалить и записать на то же место — обычный способ сохранения.
+    # Надгробие песочницы однажды закрывало путь до конца жизни тома:
+    # пересоздать удалённый файл из репозитория было нельзя вообще.
+    $p = "$Drive\branches\main\gitfs.slnx"
+    if (-not (Test-Path $p)) { return "fixture file missing from the repository" }
+    Remove-Item -LiteralPath $p -Force
+    if (Test-Path $p) { return "still there after delete" }
+    [System.IO.File]::WriteAllText($p, "recreated")
+    $back = [System.IO.File]::ReadAllText($p)
+    if ($back -ne "recreated") { return "read back '$back'" }
+    return $null
+}
 Check "overlay covers an immutable view (commits)" {
     $sha = (RunGit @("rev-parse","HEAD")).Trim()
-    $p = "$Drive\commits\$sha\LICENSE"
+    $p = "$Drive\commits\$sha\.gitignore"
     [System.IO.File]::WriteAllText($p, "EDITED-IN-COMMIT-VIEW")
     $back = [System.IO.File]::ReadAllText($p)
     if ($back -ne "EDITED-IN-COMMIT-VIEW") { return "read back '$back'" }

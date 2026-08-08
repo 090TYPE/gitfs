@@ -147,6 +147,54 @@ public class OverlayTests : IDisposable
         Assert.Equal(blob, repo.Run("rev-parse", "main:README.md").Trim());
     }
 
+    [Fact]
+    public void A_deleted_repository_file_can_be_created_again()
+    {
+        // «удалить, затем записать на то же место» — обычный способ
+        // сохранения, а не экзотика. Надгробие закрывало путь до конца
+        // жизни тома: пересоздать удалённый файл из репозитория было
+        // нельзя вообще (найдено повторным прогоном приёмки).
+        using var repo = BuildRepo();
+        var (target, _) = Open(repo);
+        using var _t = target;
+
+        Assert.True(target.Delete("branches/main/README.md").IsOk);
+        Assert.Equal(GitfsError.NotFound, target.Open("branches/main/README.md", OpenMode.Read).Error);
+
+        var opened = target.Open("branches/main/README.md", OpenMode.Write);
+        Assert.True(opened.IsOk, $"recreate failed with {opened.Error}");
+
+        var handle = opened.Value;
+        var payload = "written after delete"u8.ToArray();
+        Assert.True(target.Write(handle, 0, payload).IsOk);
+        target.Close(handle);
+
+        // читается ровно то, что записано — без следов удалённого содержимого
+        var reader = target.Open("branches/main/README.md", OpenMode.Read).Value;
+        var buffer = new byte[payload.Length + 16];
+        var read = target.Read(reader, 0, buffer).Value;
+        target.Close(reader);
+        Assert.Equal(payload, buffer[..read]);
+
+        Assert.Contains("README.md", target.List("branches/main").Value.Select(e => e.Name));
+    }
+
+    [Fact]
+    public void Recreating_a_deleted_file_does_not_resurrect_its_old_content()
+    {
+        using var repo = BuildRepo();
+        var (target, _) = Open(repo);
+        using var _t = target;
+
+        Assert.True(target.Delete("branches/main/README.md").IsOk);
+        var handle = target.Open("branches/main/README.md", OpenMode.Write).Value;
+        target.Close(handle);
+
+        // пользователь удалил файл: новый начинается пустым, а не с того,
+        // что лежало в коммите
+        Assert.Equal(0, target.Lookup("branches/main/README.md").Value.Size);
+    }
+
     // ---------- листинг ----------
 
     [Fact]

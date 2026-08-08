@@ -5,6 +5,9 @@ using Gitfs.Vfs.Views;
 #if GITFS_WINFSP
 using Gitfs.Mount.WinFsp;
 #endif
+#if GITFS_FUSE
+using Gitfs.Mount.Fuse;
+#endif
 
 namespace Gitfs.App;
 
@@ -59,10 +62,14 @@ public sealed class MountService
     public bool CanMount => OperatingSystem.IsWindows();
     public string? MountBlockedReason => CanMount ? null
         : "the filesystem adapter for this platform is not built yet";
+#elif GITFS_FUSE
+    public bool CanMount => OperatingSystem.IsLinux();
+    public string? MountBlockedReason => CanMount ? null
+        : "this build carries the FUSE adapter, which needs Linux";
 #else
     public bool CanMount => false;
     public string? MountBlockedReason =>
-        "the FUSE adapter is milestone M6 — mounting is Windows-only for now";
+        "macOS needs macFUSE, which gitfs does not carry yet; the tree is still browsable";
 #endif
 
     public static VirtualTree BuildTree(IReadOnlyCollection<string> views)
@@ -101,13 +108,22 @@ public sealed class MountService
                 throw new InvalidOperationException($"{mountPoint} is already mounted by gitfs");
         }
 
-#if GITFS_WINFSP
+#if GITFS_WINFSP || GITFS_FUSE
         var manager = new SnapshotManager(gitDir);
         var overlay = OverlayStore.Create();
         var target = new VfsMountTarget(manager, BuildTree(views),
             new DirectoryInfo(repoPath).Name, readOnly: false, overlay: overlay);
         IDisposable mount;
-        try { mount = GitfsMount.Mount(target, mountPoint, readOnly: false); }
+        // выше границы адаптеры отличаются одной строкой — ровно в этом и
+        // состояло обещание IMountTarget
+        try
+        {
+#if GITFS_WINFSP
+            mount = GitfsMount.Mount(target, mountPoint, readOnly: false);
+#else
+            mount = GitfsFuseMount.Mount(target, mountPoint, readOnly: false);
+#endif
+        }
         catch { overlay.Dispose(); throw; } // не смонтировались — не оставляем каталог
         lock (_gate) _live[mountPoint] = new LiveMount(mount, overlay);
 #endif

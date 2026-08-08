@@ -116,7 +116,17 @@ public sealed class VfsMountTarget : IMountTarget
                 if (_overlay is not null && _overlay.IsHidden(path))
                 {
                     lease.Dispose();
-                    return GitfsResult<FileHandle>.Fail(GitfsError.NotFound);
+                    // Чтение — файла нет. Запись — пользователь создаёт его
+                    // заново, и надгробие обязано уступить: удалить файл, а
+                    // потом записать на его место — это не экзотика, а то,
+                    // как сохраняет половина программ. Раньше путь из
+                    // репозитория после удаления оставался мёртвым до конца
+                    // жизни тома (найдено повторным прогоном приёмки).
+                    if (mode != OpenMode.Write)
+                        return GitfsResult<FileHandle>.Fail(GitfsError.NotFound);
+                    // без seed: воскрешать удалённое содержимое нельзя,
+                    // пользователь создаёт ПУСТОЙ файл
+                    return OpenFresh(path);
                 }
 
                 var existing = _overlay?.TryGetFilePath(path);

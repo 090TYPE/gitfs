@@ -142,10 +142,16 @@ c_seek() {
 }
 
 c_copy_off() {
-    local tmp; tmp="$(mktemp)"
-    cp "$mount_point/branches/$branch/LICENSE" "$tmp"
-    cmp -s "$tmp" "$repo/LICENSE" || echo "copied file differs from the original"
-    rm -f "$tmp"
+    # Эталон — git, а НЕ файл в рабочей копии. Том отдаёт содержимое
+    # репозитория; рабочая копия может отличаться от него законно —
+    # например переносами строк после нормализации на Windows. Сравнение
+    # с диском однажды и упало ровно на этом, обвинив том в чужой правоте.
+    local copied blob
+    copied="$(mktemp)"; blob="$(mktemp)"
+    cp "$mount_point/branches/$branch/LICENSE" "$copied"
+    git_at cat-file blob "HEAD:LICENSE" > "$blob"
+    cmp -s "$copied" "$blob" || echo "copied file differs from git cat-file HEAD:LICENSE"
+    rm -f "$copied" "$blob"
 }
 
 c_missing_is_missing() {
@@ -161,11 +167,26 @@ c_directory_is_not_a_file() {
 }
 
 # ---------- запись через песочницу ----------
+# Пишем НЕ в LICENSE: его читают проверки выше, а запись живёт до конца
+# жизни тома. Иначе второй прогон по тому же тому обвиняет том в том, что
+# натворил первый — набор, который можно запустить один раз, это ловушка.
 c_overwrite() {
-    local f="$mount_point/branches/$branch/LICENSE"
+    local f="$mount_point/branches/$branch/.gitignore"
     printf 'sandbox content' > "$f" || { echo "write failed"; return; }
     local got; got="$(cat "$f")"
     [ "$got" = "sandbox content" ] || echo "read back: $got"
+}
+
+c_delete_then_recreate() {
+    # удалить и записать на то же место — обычный способ сохранения;
+    # надгробие песочницы однажды закрывало путь до конца жизни тома
+    local f="$mount_point/branches/$branch/gitfs.slnx"
+    [ -f "$f" ] || { echo "fixture file $f is missing from the repository"; return; }
+    rm -f "$f" || { echo "delete failed"; return; }
+    [ -e "$f" ] && { echo "still present after delete"; return; }
+    printf 'recreated' > "$f" || { echo "recreate failed"; return; }
+    local got; got="$(cat "$f")"
+    [ "$got" = "recreated" ] || echo "read back: $got"
 }
 
 c_create_new() {
@@ -189,7 +210,7 @@ c_delete() {
 c_overlay_on_immutable_view() {
     local sha f
     sha="$(git_at rev-parse HEAD)"
-    f="$mount_point/commits/$sha/LICENSE"
+    f="$mount_point/commits/$sha/.gitignore"   # не LICENSE: его сверяют выше
     printf 'edited in a commit view' > "$f" || { echo "write to commits/ failed"; return; }
     local got; got="$(cat "$f")"
     [ "$got" = "edited in a commit view" ] || echo "read back: $got"
@@ -234,6 +255,7 @@ check "overwrite yields exactly what was written" c_overwrite
 check "creating a new file"                      c_create_new
 check "created file shows up in the listing"     c_created_is_listed
 check "deleting a file"                          c_delete
+check "delete then recreate a repo file"        c_delete_then_recreate
 check "overlay covers an immutable view"         c_overlay_on_immutable_view
 check "REPOSITORY IS UNTOUCHED"                  c_repository_untouched
 

@@ -35,6 +35,14 @@ fi
 echo
 tools/acceptance.sh /mnt/gitfs /work || status=1
 
+# Второй прогон по ТОМУ ЖЕ тому: набор обязан быть повторяемым. Пока
+# сценарии записи трогали те же файлы, что читают проверки выше, второй
+# прогон падал на следах первого — и набор, который можно запустить один
+# раз, скрывает ровно те дефекты, что живут в повторном использовании.
+echo
+echo "=== acceptance again, same volume ==="
+tools/acceptance.sh /mnt/gitfs /work || status=1
+
 echo
 echo "=== unmount ==="
 kill -TERM "$mount_pid" 2>/dev/null
