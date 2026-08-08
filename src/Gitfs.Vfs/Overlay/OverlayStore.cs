@@ -27,20 +27,29 @@ public sealed class OverlayStore : IDisposable
 {
     private const string ManifestName = "manifest.jsonl";
 
+    /// <summary>Пока песочница жива, её владелец держит этот файл открытым
+    /// без права совместного доступа. Это и есть доказательство жизни:
+    /// опознание владельца по номеру процесса ошибается в обе стороны —
+    /// переиспользованный PID делает мусор неудаляемым навсегда, а чужой
+    /// процесс с тем же номером выдаёт живую песочницу за брошенную.</summary>
+    private const string LockName = ".lock";
+
     private readonly object _gate = new();
     private readonly Dictionary<string, OverlayEntry> _entries = new(StringComparer.OrdinalIgnoreCase);
     private readonly string _root;
     private readonly bool _keepOnDispose;
+    private readonly FileStream _lock;
     private bool _disposed;
 
     public string Root => _root;
     public string MountId { get; }
 
-    private OverlayStore(string root, string mountId, bool keepOnDispose)
+    private OverlayStore(string root, string mountId, bool keepOnDispose, FileStream ownerLock)
     {
         _root = root;
         MountId = mountId;
         _keepOnDispose = keepOnDispose;
+        _lock = ownerLock;
     }
 
     /// <summary>mount-id включает идентификатор процесса и момент старта,
@@ -49,13 +58,34 @@ public sealed class OverlayStore : IDisposable
         DateTimeOffset? now = null)
     {
         var stamp = (now ?? DateTimeOffset.UtcNow).ToUnixTimeSeconds();
-        var mountId = $"{Environment.ProcessId}-{stamp:x}";
-        var root = Path.Combine(baseDirectory ?? DefaultRoot(), mountId);
-        Directory.CreateDirectory(root);
-        RestrictToOwner(root);
-        var store = new OverlayStore(root, mountId, keepOnDispose);
-        store.LoadManifest();
-        return store;
+        var baseId = $"{Environment.ProcessId}-{stamp:x}";
+        var parent = baseDirectory ?? DefaultRoot();
+
+        // Два монтирования одного процесса в одну секунду дают одинаковый
+        // mount-id: раньше они молча делили каталог, и первый же Dispose
+        // сносил песочницу второго вместе с несохранёнными записями.
+        for (var attempt = 1; ; attempt++)
+        {
+            var mountId = attempt == 1 ? baseId : $"{baseId}-{attempt}";
+            var root = Path.Combine(parent, mountId);
+            Directory.CreateDirectory(root);
+            RestrictToOwner(root);
+
+            FileStream ownerLock;
+            try
+            {
+                ownerLock = new FileStream(Path.Combine(root, LockName), FileMode.OpenOrCreate,
+                    FileAccess.ReadWrite, FileShare.None);
+            }
+            catch (IOException) when (attempt < 64)
+            {
+                continue; // каталогом владеет кто-то живой — берём соседний
+            }
+
+            var store = new OverlayStore(root, mountId, keepOnDispose, ownerLock);
+            store.LoadManifest();
+            return store;
+        }
     }
 
     public static string DefaultRoot()
@@ -205,30 +235,68 @@ public sealed class OverlayStore : IDisposable
         catch (UnauthorizedAccessException) { }
     }
 
+    /// <summary>Каталог песочницы, которым никто не владеет: замок либо
+    /// снялся вместе с упавшим процессом, либо его не было вовсе.
+    /// Свежие каталоги без замка не трогаем — между созданием каталога и
+    /// взятием замка есть щель, и попасть в неё чужой уборкой нельзя.</summary>
+    private static readonly TimeSpan OrphanGrace = TimeSpan.FromMinutes(1);
+
     /// <summary>Осиротевшие каталоги песочницы: их показывает doctor.</summary>
     public static IReadOnlyList<string> FindOrphans(string? baseDirectory = null)
     {
         var root = baseDirectory ?? DefaultRoot();
         if (!Directory.Exists(root)) return [];
-        var live = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var process in System.Diagnostics.Process.GetProcesses())
+        var orphans = new List<string>();
+        foreach (var dir in Directory.GetDirectories(root))
         {
-            try { live.Add(process.Id.ToString()); } catch { /* процесс ушёл */ }
+            if (IsOrphan(dir)) orphans.Add(dir);
         }
-        return Directory.GetDirectories(root)
-            .Where(dir =>
+        orphans.Sort(StringComparer.OrdinalIgnoreCase);
+        return orphans;
+    }
+
+    private static bool IsOrphan(string dir)
+    {
+        var lockPath = Path.Combine(dir, LockName);
+        if (!File.Exists(lockPath))
+            return DateTime.UtcNow - Directory.GetCreationTimeUtc(dir) > OrphanGrace;
+        try
+        {
+            // взяли замок — значит владельца нет; сразу отпускаем
+            using var probe = new FileStream(lockPath, FileMode.Open, FileAccess.ReadWrite,
+                FileShare.None);
+            return true;
+        }
+        catch (IOException) { return false; }              // держит живой процесс
+        catch (UnauthorizedAccessException) { return false; }
+    }
+
+    /// <summary>Удаляет брошенные песочницы. Возвращает удалённые каталоги и
+    /// те, что удалить не вышло — молча «почистить» и оставить мусор нельзя,
+    /// иначе doctor будет вечно советовать команду, которая уже отработала.</summary>
+    public static (IReadOnlyList<string> Removed, IReadOnlyList<string> Failed) PurgeOrphans(
+        string? baseDirectory = null)
+    {
+        var removed = new List<string>();
+        var failed = new List<string>();
+        foreach (var dir in FindOrphans(baseDirectory))
+        {
+            try
             {
-                var name = Path.GetFileName(dir);
-                var dash = name.IndexOf('-');
-                return dash <= 0 || !live.Contains(name[..dash]);
-            })
-            .ToList();
+                Directory.Delete(dir, recursive: true);
+                removed.Add(dir);
+            }
+            catch (IOException) { failed.Add(dir); }
+            catch (UnauthorizedAccessException) { failed.Add(dir); }
+        }
+        return (removed, failed);
     }
 
     public void Dispose()
     {
         if (_disposed) return;
         _disposed = true;
+        _lock.Dispose(); // до удаления: собственный замок держит каталог занятым
         if (_keepOnDispose) return;
         try { Directory.Delete(_root, recursive: true); }
         catch (IOException) { }

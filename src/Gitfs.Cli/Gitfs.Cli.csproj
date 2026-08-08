@@ -12,6 +12,13 @@
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <!-- winfsp.net ищет свою нативную библиотеку рядом с Assembly.Location,
+         а в single-file он ПУСТ — статический инициализатор падает на пустом
+         пути, и опубликованный бинарник не может смонтировать вообще ничего,
+         хотя драйвер стоит и doctor его видит. Самораспаковка возвращает
+         сборке настоящий путь. Свойство живёт здесь, а не во флагах сборки:
+         забыть флаг — значит выпустить неработающий релиз. -->
+    <IncludeAllContentForSelfExtract>true</IncludeAllContentForSelfExtract>
   </PropertyGroup>
 
 </Project>

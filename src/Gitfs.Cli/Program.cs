@@ -22,6 +22,7 @@ try
         "list" => List(),
         "mount" => Mount(args.Skip(1).ToArray()),
         "unmount" => Unmount(),
+        "purge" => Purge(),
         _ => Unknown(args[0]),
     };
 }
@@ -39,9 +40,9 @@ static void PrintUsage()
           gitfs doctor [<repo>]        check the environment (and a repository)
           gitfs tree <repo> [<path>]   walk the virtual tree without mounting
           gitfs cat <repo> <path>      print a file from the virtual tree
-          gitfs mount <repo> <target>  mount a repository
-          gitfs unmount <target>       unmount
+          gitfs mount <repo> <target>  mount a repository (Ctrl+C unmounts)
           gitfs list                   list current mounts
+          gitfs purge                  remove overlays left by crashed runs
 
         Views: branches, tags, commits, dates, history.
         """);
@@ -202,8 +203,9 @@ static int Mount(string[] rest)
     var tree = BuildTree();
     var name = new DirectoryInfo(repoPath).Name;
     // overlay включён: без него Word и Excel не откроют файл из старого
-    // коммита — они пишут lock-файлы рядом с открываемым (спека §10)
-    var overlay = OverlayStore.Create();
+    // коммита — они пишут lock-файлы рядом с открываемым (спека §10).
+    // using обязателен: песочница живёт ровно столько, сколько том.
+    using var overlay = OverlayStore.Create();
     var target = new VfsMountTarget(manager, tree, name, readOnly: false, overlay: overlay);
 
     var started = DateTime.UtcNow;
@@ -229,10 +231,29 @@ static int Mount(string[] rest)
     }
 }
 
+/// <summary>Том живёт внутри процесса `gitfs mount`, поэтому снимает его
+/// Ctrl+C в том окне — отдельной команде снимать нечего. Говорим это прямо,
+/// а не «nothing is mounted» без объяснения.</summary>
 static int Unmount()
 {
-    Console.Error.WriteLine("fail nothing is mounted");
+    var mine = OverlayStore.FindOrphans().Count;
+    Console.Error.WriteLine("fail this process holds no mounts");
+    Console.Error.WriteLine("     → a volume belongs to the gitfs mount that created it:");
+    Console.Error.WriteLine("       press Ctrl+C in that window, or quit it from the app");
+    if (mine > 0)
+        Console.Error.WriteLine($"     → {mine} abandoned overlay(s) can be removed with gitfs purge");
     return 1;
+}
+
+/// <summary>Убирает песочницы, оставшиеся от аварийно завершённых процессов.
+/// Живые не трогает: владелец держит замок внутри своего каталога.</summary>
+static int Purge()
+{
+    var (removed, failed) = OverlayStore.PurgeOrphans();
+    foreach (var dir in removed) Console.WriteLine($"removed {dir}");
+    foreach (var dir in failed) Console.Error.WriteLine($"fail could not remove {dir}");
+    if (removed.Count == 0 && failed.Count == 0) Console.WriteLine("overlay clean — nothing to purge");
+    return failed.Count > 0 ? 1 : 0;
 }
 
 static int Unknown(string command)

@@ -34,7 +34,21 @@ public sealed class MountService
     // список обязан быть под замком (находка ревью).
     private readonly object _gate = new();
     private readonly List<MountEntry> _entries = new();
-    private readonly Dictionary<string, IDisposable> _live = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, LiveMount> _live = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Том вместе со своей песочницей. Раньше снятие тома освобождало
+    /// только том, и каталог песочницы оставался на диске НАВСЕГДА — по одному
+    /// на каждое монтирование за всю историю машины.
+    /// Порядок обязателен: сперва том (иначе операция в полёте пишет в уже
+    /// удалённый каталог), потом песочница.</summary>
+    private sealed record LiveMount(IDisposable Mount, OverlayStore Overlay) : IDisposable
+    {
+        public void Dispose()
+        {
+            try { Mount.Dispose(); }
+            finally { Overlay.Dispose(); }
+        }
+    }
 
     public IReadOnlyList<MountEntry> Entries
     {
@@ -92,8 +106,10 @@ public sealed class MountService
         var overlay = OverlayStore.Create();
         var target = new VfsMountTarget(manager, BuildTree(views),
             new DirectoryInfo(repoPath).Name, readOnly: false, overlay: overlay);
-        var mount = GitfsMount.Mount(target, mountPoint, readOnly: false);
-        lock (_gate) _live[mountPoint] = mount;
+        IDisposable mount;
+        try { mount = GitfsMount.Mount(target, mountPoint, readOnly: false); }
+        catch { overlay.Dispose(); throw; } // не смонтировались — не оставляем каталог
+        lock (_gate) _live[mountPoint] = new LiveMount(mount, overlay);
 #endif
         var entry = new MountEntry(new DirectoryInfo(repoPath).Name, repoPath, mountPoint,
             string.Join(' ', new[] { "branches", "tags", "commits", "dates", "history" }
@@ -105,7 +121,7 @@ public sealed class MountService
 
     public void Unmount(MountEntry entry)
     {
-        IDisposable? mount;
+        LiveMount? mount;
         lock (_gate)
         {
             _live.Remove(entry.MountPoint, out mount);
@@ -116,7 +132,7 @@ public sealed class MountService
 
     public void UnmountAll()
     {
-        List<IDisposable> mounts;
+        List<LiveMount> mounts;
         lock (_gate)
         {
             mounts = _live.Values.ToList();

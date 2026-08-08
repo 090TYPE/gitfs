@@ -131,27 +131,21 @@ public static class Doctor
                 "run git commit-graph write --reachable to speed up dates/ and history/");
     }
 
+    /// <summary>Осиротевшие песочницы спрашиваем у самой песочницы: свой
+    /// перечислитель здесь считал брошенным КАЖДЫЙ каталог, включая тот,
+    /// в который прямо сейчас пишет смонтированный том, — и предлагал его
+    /// удалить.</summary>
     private static Check CheckOverlays()
     {
-        var root = OverlayRoot();
-        if (!Directory.Exists(root)) return new Check(CheckStatus.Ok, "overlay", "clean");
-        var orphans = Directory.GetDirectories(root);
-        return orphans.Length == 0
+        var orphans = Vfs.Overlay.OverlayStore.FindOrphans();
+        return orphans.Count == 0
             ? new Check(CheckStatus.Ok, "overlay", "clean")
             : new Check(CheckStatus.Warn, "overlay",
-                $"{orphans.Length} orphaned in {root}",
-                "remove them with gitfs unmount --purge", "docs.gitfs.dev/e/overlay-orphan");
+                $"{orphans.Count} orphaned in {OverlayRoot()}",
+                "remove them with gitfs purge", "docs.gitfs.dev/e/overlay-orphan");
     }
 
-    public static string OverlayRoot()
-    {
-        var basePath = OperatingSystem.IsWindows()
-            ? Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData)
-            : Environment.GetEnvironmentVariable("XDG_STATE_HOME")
-              ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-                  ".local", "state");
-        return Path.Combine(basePath, "gitfs", "overlay");
-    }
+    public static string OverlayRoot() => Vfs.Overlay.OverlayStore.DefaultRoot();
 
     /// <summary>Каталог .git репозитория: обычный каталог или файл-указатель
     /// «gitdir: …» (worktree/submodule). null — не репозиторий.</summary>

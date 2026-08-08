@@ -82,9 +82,7 @@ file           13334  2026-08-08  latest.cs
 
 ```
 $ gitfs doctor .
-fail winfsp                 not installed
-     → gitfs needs it to create a volume; install from winfsp.dev/rel
-       docs.gitfs.dev/e/winfsp-missing
+ok   winfsp                 2.1.24255.2da97d4
 ok   git                    2.54.0.windows.1
 ok   drive letters          G H I J K free
 ok   repository             C:\Users\090\Documents\GitHub\gitfs\.git
@@ -94,8 +92,13 @@ warn accelerators           none
      → run git commit-graph write --reachable to speed up dates/ and history/
 ok   overlay                clean
 
-6 ok · 1 warning · 1 failure
+7 ok · 1 warning · 0 failures
 ```
+
+Каждая строка — либо «дальше можно», либо ровно одно действие. Совет обязан
+вести к работающей команде: `doctor` однажды предлагал `gitfs unmount --purge`,
+которой не существовало, — теперь на месте совета настоящая `gitfs purge`,
+а `unmount` объясняет, что том снимается там, где создан.
 
 **`gitfs tree` работает без установки чего-либо** — это тот же виртуальный слой,
 который увидит Проводник, только выведенный в терминал. Само монтирование
@@ -118,7 +121,7 @@ gitfs mount C:\src\myrepo G:
 | — | Приложение с интерфейсом и треем (Avalonia) | готово |
 | M6 | Адаптер FUSE (Linux) | не начат |
 | M7 | Ускорители (commit-graph), бенчмарки | готово; нагрузочные тесты нет |
-| M8 | Релиз: single-file бинарники, winget/scoop | бинарники есть, манифестов нет |
+| M8 | Релиз: single-file бинарники, winget/scoop | бинарники и `tools/publish.ps1` есть, манифестов нет |
 
 ## Производительность
 
@@ -186,7 +189,7 @@ Gitfs.Core           свой ридер формата git — ноль нат�
 dotnet test gitfs.slnx
 ```
 
-196 тестов плюс приёмка на живом томе:
+208 тестов плюс приёмка на живом томе:
 
 ```bash
 powershell -ExecutionPolicy Bypass -File tools/acceptance.ps1 G:
@@ -197,6 +200,18 @@ seek, копирование, `history`, запись через песочни�
 инвариант: после всех записей репозиторий не изменён. Именно этот прогон
 вскрыл шесть дефектов, которые не мог поймать ни один юнит-тест: они
 живут в контракте с Windows, а не в коде.
+
+Собирается релиз тоже скриптом, а не руками:
+
+```bash
+powershell -ExecutionPolicy Bypass -File tools/publish.ps1
+```
+
+Один забытый флаг публикации однажды дал бинарник, который не монтировал
+ничего: в single-file `Assembly.Location` пуст, а winfsp.net ищет по нему
+свою нативную библиотеку. Драйвер стоял, `doctor` показывал его версию —
+и всё равно «did not load». Теперь настройка живёт в csproj, а не в
+командной строке.
 
 Методика юнит-тестов — **дифференциальная**: эталоном служит сам git.
 

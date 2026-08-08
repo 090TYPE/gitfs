@@ -33,15 +33,21 @@ public sealed class GitfsMount : IDisposable
         {
             status = host.Mount(mountPoint, null, false, 0);
         }
+        // «не установлен» — только один из способов не загрузиться. Драйвер
+        // может стоять, а версия его библиотеки не совпасть с ожидаемой —
+        // и тогда совет «поставьте WinFsp» уводит в сторону от настоящей
+        // причины, которую знает сама загрузка. Показываем её.
         catch (DllNotFoundException e)
         {
             throw new MountException(
-                "WinFsp is not installed; gitfs needs it to create a volume.", e);
+                $"WinFsp did not load: {e.Message.TrimEnd('.')}. "
+                + "Install or repair it from winfsp.dev/rel.", e);
         }
         catch (TypeInitializationException e)
         {
+            var reason = (e.InnerException ?? e).Message.TrimEnd('.');
             throw new MountException(
-                "WinFsp is not installed; gitfs needs it to create a volume.", e);
+                $"WinFsp did not load: {reason}. Run gitfs doctor to compare versions.", e);
         }
         if (status != FileSystemBase.STATUS_SUCCESS)
             throw new MountException($"WinFsp refused to mount {mountPoint} (status 0x{status:X8}).");
