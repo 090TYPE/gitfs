@@ -19,6 +19,11 @@ public sealed class RepoBuilder : IDisposable
         ("GIT_COMMITTER_EMAIL", "fixture@gitfs.test"),
         ("GIT_COMMITTER_DATE", "2026-01-01T12:00:00 +0000"),
         ("GIT_CONFIG_NOSYSTEM", "1"),
+        // И пользовательский конфиг тоже. NOSYSTEM закрывал только
+        // /etc/gitconfig, а ~/.gitconfig продолжал действовать — на раннере
+        // CI он есть, его пишет и сам actions/checkout. Фикстура обязана
+        // зависеть только от того, что настроила сама.
+        ("GIT_CONFIG_GLOBAL", "/dev/null"),
     };
 
     /// <summary>Имена уже созданных фикстур. Dispose сносит свой каталог
@@ -51,7 +56,16 @@ public sealed class RepoBuilder : IDisposable
         }
         Directory.CreateDirectory(Root);
         Run("init", "-b", "main");
+        // Никакого фонового обслуживания. Одного gc.auto мало: gc по
+        // умолчанию отделяется в фоновый процесс, а в новых версиях git
+        // коммит запускает `maintenance run --auto` отдельной дорогой.
+        // Именно это и происходило на раннере: посторонний упаковщик
+        // работал ВНУТРИ строящейся фикстуры — отсюда три пакета там, где
+        // repack оставляет один, объекты, «пропавшие» в пак посреди цикла,
+        // и git, не читающий блоб, который сам только что записал.
         Run("config", "gc.auto", "0");
+        Run("config", "gc.autoDetach", "false");
+        Run("config", "maintenance.auto", "false");
         Run("config", "core.autocrlf", "false");
         // Рефлога у фикстуры быть не должно. Он нужен для интерактивной
         // работы, ни один тест его не читает, а `git repack -a -d` обходит
