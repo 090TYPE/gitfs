@@ -21,13 +21,22 @@ public readonly struct NodeInfo
     public DateTimeOffset Timestamp { get; }
     public bool ReadOnly { get; }
 
-    public NodeInfo(NodeKind kind, ObjectId blobId, long size, DateTimeOffset timestamp, bool readOnly = true)
+    /// <summary>git различает 100644 и 100755, и на Linux эта разница
+    /// наблюдаема: без неё каждый скрипт в репозитории приезжает на том
+    /// как -rw-r--r--, а `./configure` получает EACCES от ядра (том
+    /// монтируется с default_permissions). Границе нужно это донести —
+    /// у NodeKind нет места для такого признака.</summary>
+    public bool Executable { get; }
+
+    public NodeInfo(NodeKind kind, ObjectId blobId, long size, DateTimeOffset timestamp,
+        bool readOnly = true, bool executable = false)
     {
         Kind = kind;
         BlobId = blobId;
         Size = size;
         Timestamp = timestamp;
         ReadOnly = readOnly;
+        Executable = executable;
     }
 
     public static NodeInfo Directory(DateTimeOffset timestamp) =>

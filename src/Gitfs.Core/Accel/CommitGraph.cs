@@ -70,6 +70,15 @@ public sealed class CommitGraph
             }
             if (fanout == 0 || lookup == 0 || commitData == 0) return null;
 
+            // Смещение проверено только как «начинается внутри файла», а
+            // читаем мы отсюда 1024 байта. Один перевёрнутый бит в поле
+            // смещения (битая синхронизация, оборванный rsync, .git в
+            // облачной папке) давал ArgumentOutOfRangeException ИЗ метода,
+            // который документирован как «нет графа — не ошибка»: он летел
+            // сквозь RepoSnapshot.Load и делал репозиторий несмонтируемым
+            // из-за файла, который целиком необязателен.
+            if (fanout + 256 * 4 > data.Length) return null;
+
             var count = (int)BinaryPrimitives.ReadUInt32BigEndian(data.AsSpan(fanout + 255 * 4));
             if (count <= 0) return null;
             if (lookup + (long)count * ObjectId.RawLength > data.Length) return null;
@@ -77,7 +86,10 @@ public sealed class CommitGraph
 
             return new CommitGraph(data, fanout, lookup, commitData, count);
         }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        // Ускоритель не имеет права уронить монтирование НИ ПРИ КАКОМ
+        // содержимом файла: он необязателен по определению. Ловим всё, кроме
+        // отказов среды, которые ловить бессмысленно.
+        catch (Exception e) when (e is not OutOfMemoryException and not StackOverflowException)
         {
             return null;
         }

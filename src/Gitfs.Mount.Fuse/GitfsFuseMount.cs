@@ -22,17 +22,27 @@ public sealed unsafe class GitfsFuseMount : IDisposable
     private readonly IntPtr _operations;
     private readonly Thread _loop;
     private readonly string _mountPoint;
+    private readonly Action<string>? _log;
+    /// <summary>Взводится потоком цикла ПОСЛЕ возврата из fuse_loop. Пока он
+    /// не взведён, ничего, до чего цикл может дотянуться, освобождать
+    /// нельзя.</summary>
+    private readonly ManualResetEventSlim _loopFinished = new(false);
     private volatile bool _disposed;
 
     private GitfsFuseMount(IntPtr fuse, GitfsFuseFileSystem fs, GCHandle self,
-        IntPtr operations, string mountPoint)
+        IntPtr operations, string mountPoint, Action<string>? log)
     {
         _fuse = fuse;
         _fs = fs;
         _self = self;
         _operations = operations;
         _mountPoint = mountPoint;
-        _loop = new Thread(() => Libfuse.Loop(_fuse))
+        _log = log;
+        _loop = new Thread(() =>
+        {
+            try { Libfuse.Loop(_fuse); }
+            finally { _loopFinished.Set(); }
+        })
         {
             IsBackground = true,
             Name = $"gitfs-fuse {mountPoint}",
@@ -51,6 +61,19 @@ public sealed unsafe class GitfsFuseMount : IDisposable
     {
         if (!OperatingSystem.IsLinux())
             throw new FuseMountException("the FUSE adapter runs on Linux only");
+
+        // Смещения в FuseAbi сняты на linux-x86_64 и верны только там.
+        // На aarch64 struct stat весит 128 байт вместо 144, st_mode лежит
+        // на 16, а st_nlink на 20 — WriteStat затирал бы 16 байт за концом
+        // структуры и клал число ссылок в поле режима. Ни компилятор, ни
+        // тесты этого не увидят: сборка под linux-arm64 проходит, а
+        // фикстура сверяется сама с собой. Отказ здесь — единственное
+        // место, где это ловится.
+        if (RuntimeInformation.ProcessArchitecture != Architecture.X64)
+            throw new FuseMountException(
+                $"gitfs has no verified FUSE ABI for {RuntimeInformation.ProcessArchitecture}: "
+                + "the struct offsets are taken on x86_64 and differ on this architecture. "
+                + "Run tools/fuse-abi-probe.c here and add a fixture before mounting.");
         if (!Directory.Exists(mountPoint))
             throw new FuseMountException($"{mountPoint} does not exist; create the directory first");
 
@@ -91,7 +114,7 @@ public sealed unsafe class GitfsFuseMount : IDisposable
                     $"could not mount at {mountPoint}: it must be an existing, "
                     + "unused directory, and /dev/fuse must be accessible");
             }
-            return new GitfsFuseMount(fuse, fs, self, operations, mountPoint);
+            return new GitfsFuseMount(fuse, fs, self, operations, mountPoint, log);
         }
         finally { FreeArgv(argv, options.Count); }
     }
@@ -129,11 +152,27 @@ public sealed unsafe class GitfsFuseMount : IDisposable
         // чтобы цикл не подхватил новую операцию, затем unmount.
         Libfuse.Exit(_fuse);
         Libfuse.Unmount(_fuse);
-        _loop.Join(TimeSpan.FromSeconds(5));
-        Libfuse.Destroy(_fuse);
 
+        // Ждём ФАКТА возврата из цикла, а не истечения таймаута. Раньше
+        // результат Join отбрасывался, и дальше шёл безусловный снос: если
+        // точку монтирования кто-то держит (оболочка, зашедшая внутрь,
+        // редактор с открытым файлом), umount2(MNT_DETACH) соединение не
+        // рвёт, поток остаётся в read() дольше пяти секунд — и мы освобождали
+        // под ним сессию libfuse, GCHandle, через который колбэки находят
+        // свой том, и саму таблицу операций. В утилите это маскировал
+        // немедленный выход процесса; в приложении убивало окно и все
+        // остальные тома вместе с ним.
+        if (!_loopFinished.Wait(TimeSpan.FromSeconds(5)))
+        {
+            _log?.Invoke($"{_mountPoint} is still busy; leaving the session allocated "
+                + "rather than freeing memory the fuse loop is using");
+            return;   // ограниченная утечка лучше обращения к освобождённому
+        }
+
+        Libfuse.Destroy(_fuse);
         _fs.Dispose();
         if (_self.IsAllocated) _self.Free();
         Marshal.FreeHGlobal(_operations);
+        _loopFinished.Dispose();
     }
 }

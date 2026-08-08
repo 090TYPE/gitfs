@@ -72,7 +72,9 @@ public sealed class VfsMountTarget : IMountTarget
     {
         var overlay = _overlay!;
         var result = new List<DirEntry>(entries.Count);
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        // то же правило сравнения, что у песочницы и у вьюх — иначе под
+        // Posix запись в makefile прятала бы из листинга Makefile
+        var seen = new HashSet<string>(overlay.PathComparer);
         var basePath = OverlayStore.Normalize(path);
 
         foreach (var entry in entries)
@@ -111,11 +113,21 @@ public sealed class VfsMountTarget : IMountTarget
         return Guard(() =>
         {
             var lease = _snapshots.Acquire();
+            // Владение арендой отслеживается явно. Ветки ниже отпускают её
+            // ДО того, как передать управление дальше, и без этого флага
+            // исключение из OpenFresh доводило до catch, который отпускал ту
+            // же аренду второй раз. Счётчик уходил в ноль на снапшоте,
+            // который менеджер продолжает публиковать, — и каждый следующий
+            // Acquire крутился вечно. На Linux с однопоточным циклом FUSE
+            // это вешает весь том: процессы уходят в D-состояние, спасает
+            // только fusermount -uz.
+            var owned = true;
             try
             {
                 if (_overlay is not null && _overlay.IsHidden(path))
                 {
                     lease.Dispose();
+                    owned = false;
                     // Чтение — файла нет. Запись — пользователь создаёт его
                     // заново, и надгробие обязано уступить: удалить файл, а
                     // потом записать на его место — это не экзотика, а то,
@@ -134,6 +146,7 @@ public sealed class VfsMountTarget : IMountTarget
                 if (node is null && existing is null)
                 {
                     lease.Dispose();
+                    owned = false;
                     // запись по несуществующему пути создаёт файл в песочнице
                     if (mode != OpenMode.Write) return GitfsResult<FileHandle>.Fail(GitfsError.NotFound);
                     return OpenFresh(path);
@@ -168,7 +181,7 @@ public sealed class VfsMountTarget : IMountTarget
             }
             catch
             {
-                lease.Dispose();
+                if (owned) lease.Dispose();
                 throw;
             }
         });
@@ -241,8 +254,21 @@ public sealed class VfsMountTarget : IMountTarget
         if (_readOnly || _overlay is null) return GitfsResult<Unit>.Fail(GitfsError.AccessDenied);
         try
         {
-            if (Lookup(path).Error == GitfsError.NotFound)
-                return GitfsResult<Unit>.Fail(GitfsError.NotFound);
+            var lookup = Lookup(path);
+            if (!lookup.TryGet(out var node))
+                return GitfsResult<Unit>.Fail(
+                    lookup.Error == GitfsError.None ? GitfsError.NotFound : lookup.Error);
+
+            // Директорию не удаляем. Надгробие — точный ключ, оно скрывает
+            // ровно этот путь: `rm -rf src` помечал каждый файл, падал на
+            // rmdir, и всё поддерево оставалось невидимым до перемонтирования,
+            // хотя пользователю сообщили об ошибке. На Windows было хуже —
+            // rmdir проходил, каталог исчезал из листинга, а файлы под ним
+            // продолжали читаться. Отказ на первом шаге честнее половинчатого
+            // успеха; настоящие надгробия на поддерево — отдельная работа.
+            if (node.Kind == NodeKind.Directory)
+                return GitfsResult<Unit>.Fail(GitfsError.IsADirectory);
+
             _overlay.Hide(path);
             return GitfsResult<Unit>.Ok(Unit.Value);
         }

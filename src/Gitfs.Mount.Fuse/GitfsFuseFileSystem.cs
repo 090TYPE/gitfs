@@ -48,6 +48,12 @@ internal sealed unsafe class GitfsFuseFileSystem : IDisposable
         Set(ops, FuseAbi.OpCreate, (delegate* unmanaged<byte*, uint, byte*, int>)&Callbacks.Create);
         Set(ops, FuseAbi.OpTruncate, (delegate* unmanaged<byte*, long, byte*, int>)&Callbacks.Truncate);
         Set(ops, FuseAbi.OpUnlink, (delegate* unmanaged<byte*, int>)&Callbacks.Unlink);
+        // rmdir обязателен, хотя удалять директории мы не умеем: пустой слот
+        // даёт ENOSYS — «функция не реализована», и `rm -rf` сообщает это
+        // ПОСЛЕ того, как уже пометил надгробием каждый файл внутри.
+        // Подключённый слот отвечает тем же отказом, что и unlink, и обход
+        // прекращается на первом же шаге.
+        Set(ops, FuseAbi.OpRmdir, (delegate* unmanaged<byte*, int>)&Callbacks.Rmdir);
         // Word и его собратья трогают метки времени и права; отказ по этим
         // вызовам обрывает сохранение, поэтому они принимаются молча —
         // изменить в репозитории они всё равно ничего не могут
@@ -60,8 +66,20 @@ internal sealed unsafe class GitfsFuseFileSystem : IDisposable
 
     // ---------- операции ----------
 
+    /// <summary>Имя длиннее объявленного f_namemax: том обязан отвечать
+    /// ENAMETOOLONG, а не делать вид, что такого файла нет. Иначе листинг
+    /// (который такие записи пропускает) и разрешение пути расходятся во
+    /// мнении, и разницу невозможно объяснить пользователю.</summary>
+    private static bool NameTooLong(string path)
+    {
+        var slash = path.LastIndexOf('/');
+        var leaf = slash < 0 ? path : path[(slash + 1)..];
+        return System.Text.Encoding.UTF8.GetByteCount(leaf) > MaxNameBytes;
+    }
+
     public int Getattr(string path, byte* stat)
     {
+        if (NameTooLong(path)) return -Errno.NameTooLong;
         var result = _target.Lookup(path);
         if (!result.TryGet(out var node)) return -Translate(result.Error);
         WriteStat(stat, node);
@@ -90,17 +108,30 @@ internal sealed unsafe class GitfsFuseFileSystem : IDisposable
         return 0;
     }
 
+    /// <summary>Длина имени в байтах, которую мы соглашаемся положить на стек.
+    /// FUSE_NAME_MAX ядра — 1024; мы заявляем в statfs 255 и обязаны этого
+    /// же и держаться.</summary>
+    private const int MaxNameBytes = 255;
+
     private static int FillName(delegate* unmanaged<void*, byte*, byte*, long, int, int> fill,
         void* buffer, string name, byte* stat)
     {
+        // Буфер ФИКСИРОВАННЫЙ. Имя записи приходит из дерева git, то есть из
+        // данных, которые мы не писали: TreeObject.Parse проверяет только,
+        // что имя непустое, не «.», не «..» и без «/», а дерево целиком
+        // допускается до 64 МБ — значит одно имя может весить мегабайты.
+        // stackalloc по его длине переполнял стек потока цикла FUSE, а
+        // переполнение стека в .NET не ловится: catch в Guard его не видит,
+        // рантайм убивает процесс целиком, и точка монтирования остаётся
+        // висеть как ENOTCONN. Слишком длинное имя пропускаем — том
+        // объявляет f_namemax = 255 и обязан этому соответствовать.
         var bytes = System.Text.Encoding.UTF8.GetBytes(name);
-        fixed (byte* p = bytes)
-        {
-            var zeroTerminated = stackalloc byte[bytes.Length + 1];
-            new Span<byte>(p, bytes.Length).CopyTo(new Span<byte>(zeroTerminated, bytes.Length));
-            zeroTerminated[bytes.Length] = 0;
-            return fill(buffer, zeroTerminated, stat, 0, 0);
-        }
+        if (bytes.Length > MaxNameBytes) return 0;
+
+        var zeroTerminated = stackalloc byte[MaxNameBytes + 1];
+        bytes.AsSpan().CopyTo(new Span<byte>(zeroTerminated, MaxNameBytes));
+        zeroTerminated[bytes.Length] = 0;
+        return fill(buffer, zeroTerminated, stat, 0, 0);
     }
 
     public int Open(string path, byte* fi)
@@ -264,6 +295,12 @@ internal sealed unsafe class GitfsFuseFileSystem : IDisposable
         var mode = directory
             ? FileMode.Directory | (_readOnly ? FileMode.DirReadOnly : FileMode.DirReadWrite)
             : FileMode.Regular | (_readOnly ? FileMode.FileReadOnly : FileMode.FileReadWrite);
+        // Бит исполнения из git. Том монтируется с default_permissions,
+        // поэтому решает ядро по тому, что мы здесь напишем: без этого
+        // ./configure и tools/*.sh получали EACCES, а chmod +x «проходил»
+        // и всё равно ничего не менял.
+        if (!directory && node.Executable)
+            mode |= FileMode.ExecOwner | FileMode.ExecGroup | FileMode.ExecOther;
 
         *(uint*)(stat + FuseAbi.StatMode) = mode;
         *(ulong*)(stat + FuseAbi.StatNlink) = directory ? 2UL : 1UL;
@@ -300,6 +337,10 @@ internal sealed unsafe class GitfsFuseFileSystem : IDisposable
         GitfsError.AccessDenied => Errno.Access,
         GitfsError.NotSupported => Errno.NotSup,
         GitfsError.TooLarge => Errno.NoSpc,
+        // ENOTEMPTY, а не EISDIR: `rm -rf` показывает его как «Directory not
+        // empty», и это ближе к правде — содержимое директории никуда не
+        // делось, просто удалить её мы не беремся
+        GitfsError.IsADirectory => Errno.NotEmpty,
         _ => Errno.IO,
     };
 
@@ -362,6 +403,12 @@ internal sealed unsafe class GitfsFuseFileSystem : IDisposable
         [UnmanagedCallersOnly]
         public static int Unlink(byte* path) =>
             Guard(nameof(Unlink), fs => fs.Unlink(Str(path)));
+
+        /// <summary>Тот же путь, что unlink: граница сама откажет на
+        /// директории, и ответ будет ENOTEMPTY, а не ENOSYS.</summary>
+        [UnmanagedCallersOnly]
+        public static int Rmdir(byte* path) =>
+            Guard(nameof(Rmdir), fs => fs.Unlink(Str(path)));
 
         [UnmanagedCallersOnly]
         public static int Release(byte* path, byte* fi) =>

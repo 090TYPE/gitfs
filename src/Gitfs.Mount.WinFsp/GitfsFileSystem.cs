@@ -261,8 +261,7 @@ public sealed class GitfsFileSystem : FileSystemBase
         try
         {
             if (_readOnly) return STATUS_MEDIA_WRITE_PROTECTED;
-            var lookup = _target.Lookup(Normalize(fileName));
-            return lookup.IsOk ? STATUS_SUCCESS : Translate(lookup.Error);
+            return DecideDelete(fileName);
         }
         catch (Exception e)
         {
@@ -280,13 +279,29 @@ public sealed class GitfsFileSystem : FileSystemBase
         {
             if (_readOnly) return STATUS_MEDIA_WRITE_PROTECTED;
             if (!deleteFile) return STATUS_SUCCESS; // отмена пометки на удаление
-            var lookup = _target.Lookup(Normalize(fileName));
-            return lookup.IsOk ? STATUS_SUCCESS : Translate(lookup.Error);
+            return DecideDelete(fileName);
         }
         catch (Exception e)
         {
             return Fail("SetDelete", e);
         }
+    }
+
+    /// <summary>Решение об удалении принимается ЗДЕСЬ, потому что дальше его
+    /// принять негде: Cleanup возвращает void, и отказ из него физически не
+    /// доходит до вызывающего. Прежде отказ границы там и терялся — рекурсивное
+    /// удаление каталога сообщало об успехе, ничего не удалив.</summary>
+    private int DecideDelete(string fileName)
+    {
+        var path = Normalize(fileName);
+        var lookup = _target.Lookup(path);
+        if (!lookup.TryGet(out var node)) return Translate(lookup.Error);
+
+        // Директории не удаляем: надгробие песочницы прячет ровно один путь,
+        // и «удалённый» каталог оставлял бы содержимое читаемым, но
+        // невидимым. Проводник покажет это как «папка не пуста».
+        if (node.Kind == NodeKind.Directory) return STATUS_DIRECTORY_NOT_EMPTY;
+        return STATUS_SUCCESS;
     }
 
     public override void Cleanup(object fileNode, object fileDesc, string fileName, uint flags)
@@ -463,6 +478,10 @@ public sealed class GitfsFileSystem : FileSystemBase
         GitfsError.AccessDenied => STATUS_ACCESS_DENIED,
         GitfsError.NotSupported => STATUS_NOT_SUPPORTED,
         GitfsError.TooLarge => STATUS_FILE_TOO_LARGE,
+        // Проводник показывает это как «папка не пуста» — ближе к правде,
+        // чем прежнее поведение, при котором rmdir проходил, каталог
+        // исчезал из листинга, а файлы под ним продолжали читаться
+        GitfsError.IsADirectory => STATUS_DIRECTORY_NOT_EMPTY,
         _ => STATUS_IO_DEVICE_ERROR,
     };
 

@@ -13,7 +13,14 @@
   -->
   <PropertyGroup>
     <GitfsTargetWindows Condition="$(RuntimeIdentifier.StartsWith('win'))">true</GitfsTargetWindows>
-    <GitfsTargetLinux Condition="$(RuntimeIdentifier.StartsWith('linux'))">true</GitfsTargetLinux>
+    <!--
+      Только x64. Смещения полей в FuseAbi сняты на linux-x86_64 и на другой
+      архитектуре неверны: на aarch64 struct stat весит 128 байт вместо 144,
+      а st_mode лежит на 16 вместо 24. Ни сборка, ни тесты этого не заметят —
+      publish под linux-arm64 проходит, фикстура сверяется сама с собой, CI
+      гоняет только x86_64. Пусть лучше адаптер не попадёт в сборку.
+    -->
+    <GitfsTargetLinux Condition="$(RuntimeIdentifier.StartsWith('linux')) and $(RuntimeIdentifier.Contains('-x64'))">true</GitfsTargetLinux>
 
     <GitfsTargetWindows Condition="'$(RuntimeIdentifier)' == '' and $([MSBuild]::IsOSPlatform('Windows'))">true</GitfsTargetWindows>
     <GitfsTargetLinux Condition="'$(RuntimeIdentifier)' == '' and $([MSBuild]::IsOSPlatform('Linux'))">true</GitfsTargetLinux>

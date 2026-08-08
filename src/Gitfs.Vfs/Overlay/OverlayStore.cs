@@ -35,7 +35,19 @@ public sealed class OverlayStore : IDisposable
     private const string LockName = ".lock";
 
     private readonly object _gate = new();
-    private readonly Dictionary<string, OverlayEntry> _entries = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Как песочница сравнивает пути. Своего мнения у неё быть не
+    /// должно: слой вьюх уже решил этот вопрос политикой имён, и под Posix
+    /// `Makefile` и `makefile` — разные файлы. Пока здесь стоял жёсткий
+    /// OrdinalIgnoreCase, запись в один из них подменяла другой, а удаление
+    /// одного прятало оба.</summary>
+    private readonly StringComparer _paths;
+    private readonly StringComparison _pathComparison;
+    private readonly Dictionary<string, OverlayEntry> _entries;
+
+    /// <summary>Сравнение путей этой песочницы — чтобы наложение на листинг
+    /// пользовалось тем же правилом, а не своим.</summary>
+    public StringComparer PathComparer => _paths;
     private readonly string _root;
     private readonly bool _keepOnDispose;
     private readonly FileStream _lock;
@@ -44,19 +56,28 @@ public sealed class OverlayStore : IDisposable
     public string Root => _root;
     public string MountId { get; }
 
-    private OverlayStore(string root, string mountId, bool keepOnDispose, FileStream ownerLock)
+    private OverlayStore(string root, string mountId, bool keepOnDispose, FileStream ownerLock,
+        StringComparer paths, StringComparison comparison)
     {
         _root = root;
         MountId = mountId;
         _keepOnDispose = keepOnDispose;
         _lock = ownerLock;
+        _paths = paths;
+        _pathComparison = comparison;
+        _entries = new Dictionary<string, OverlayEntry>(paths);
     }
 
     /// <summary>mount-id включает идентификатор процесса и момент старта,
-    /// поэтому list и doctor распознают осиротевшие после аварии каталоги.</summary>
+    /// поэтому list и doctor распознают осиротевшие после аварии каталоги.
+    ///
+    /// names задаёт, как песочница сравнивает пути. По умолчанию — политика
+    /// текущей платформы, то есть то же правило, по которому их сравнивают
+    /// вьюхи.</summary>
     public static OverlayStore Create(string? baseDirectory = null, bool keepOnDispose = false,
-        DateTimeOffset? now = null)
+        DateTimeOffset? now = null, NamePolicy? names = null)
     {
+        var policy = names ?? NamePolicy.For(NamePolicyKind.Native);
         var stamp = (now ?? DateTimeOffset.UtcNow).ToUnixTimeSeconds();
         var baseId = $"{Environment.ProcessId}-{stamp:x}";
         var parent = baseDirectory ?? DefaultRoot();
@@ -82,7 +103,8 @@ public sealed class OverlayStore : IDisposable
                 continue; // каталогом владеет кто-то живой — берём соседний
             }
 
-            var store = new OverlayStore(root, mountId, keepOnDispose, ownerLock);
+            var store = new OverlayStore(root, mountId, keepOnDispose, ownerLock,
+                policy.Comparer, policy.Comparison);
             store.LoadManifest();
             return store;
         }
@@ -127,7 +149,7 @@ public sealed class OverlayStore : IDisposable
         if (prefix.Length > 0) prefix += "/";
         foreach (var entry in Entries)
         {
-            if (!entry.VirtualPath.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) continue;
+            if (!entry.VirtualPath.StartsWith(prefix, _pathComparison)) continue;
             var rest = entry.VirtualPath[prefix.Length..];
             if (rest.Length == 0 || rest.Contains('/')) continue; // не прямой потомок
             yield return (rest, entry);
@@ -170,8 +192,16 @@ public sealed class OverlayStore : IDisposable
                 using var file = new FileStream(target, FileMode.Create, FileAccess.Write, FileShare.None);
                 source.CopyTo(file);
             }
-            else if (!File.Exists(target))
+            else
             {
+                // Всегда обнуляем, а не «создаём, если нет». Сюда попадают
+                // только те случаи, где по контракту должен получиться ПУСТОЙ
+                // файл, а имя в песочнице — хеш пути, поэтому файл от прошлой
+                // жизни этого же пути лежит ровно здесь. Прежнее «если нет»
+                // усыновляло его: сорвавшийся на середине seed оставлял N
+                // байт без записи в манифесте, потом rm ставил надгробие, не
+                // удалив их, — и «новый пустой файл» печатал начало только
+                // что удалённого блоба.
                 File.WriteAllBytes(target, []);
             }
             Record(new OverlayEntry(key, OverlayKind.File, storage, DateTimeOffset.UtcNow));
@@ -185,11 +215,15 @@ public sealed class OverlayStore : IDisposable
         var key = Normalize(virtualPath);
         lock (_gate)
         {
-            if (_entries.TryGetValue(key, out var existing) && existing.Kind == OverlayKind.File)
-            {
-                var path = Path.Combine(_root, existing.StorageName);
-                if (File.Exists(path)) File.Delete(path);
-            }
+            // Удаляем файл песочницы БЕЗУСЛОВНО, а не только когда о нём есть
+            // запись. Имя — хеш пути, так что кандидат ровно один; а файл,
+            // осиротевший от сорвавшейся записи, записи в манифесте не имеет
+            // и прежде переживал собственное надгробие, чтобы всплыть при
+            // следующем создании того же пути.
+            var path = Path.Combine(_root, StorageNameFor(key));
+            try { if (File.Exists(path)) File.Delete(path); }
+            catch (IOException) { }              // держит открытый хендл — переживём
+            catch (UnauthorizedAccessException) { }
             Record(new OverlayEntry(key, OverlayKind.Tombstone, "", DateTimeOffset.UtcNow));
         }
     }

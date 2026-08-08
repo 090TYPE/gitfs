@@ -130,6 +130,18 @@ public class FuseAbiTests
     }
 
     [Fact]
+    public void The_fixture_matches_the_architecture_this_test_is_running_on()
+    {
+        // «arch 64» — это заявление фикстуры о себе, и сверять его с самой
+        // фикстурой бессмысленно: под linux-arm64 всё зеленело, хотя
+        // раскладка там совсем другая (stat 128 байт, st_mode на 16).
+        // Сверяться надо с настоящей архитектурой процесса.
+        if (!OperatingSystem.IsLinux()) return;   // на Windows адаптер не грузится
+        Assert.Equal(System.Runtime.InteropServices.Architecture.X64,
+            System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture);
+    }
+
+    [Fact]
     public void Every_line_of_the_probe_is_compared_with_a_constant()
     {
         // Защита от «расширил пробу, забыл сверить». Сравнивать по ИМЕНАМ

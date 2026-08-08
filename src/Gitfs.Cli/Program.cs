@@ -232,15 +232,38 @@ static int Mount(string[] rest)
         Console.WriteLine("press Ctrl+C to unmount");
 
         using var stop = new ManualResetEventSlim();
+        using var torndown = new ManualResetEventSlim();
         Console.CancelKeyPress += (_, e) => { e.Cancel = true; stop.Set(); };
+
         // SIGTERM тоже снимает том: без этого docker stop и systemd оставляли
-        // бы точку монтирования висеть, а песочницу — на диске
-        AppDomain.CurrentDomain.ProcessExit += (_, _) => stop.Set();
-        System.Runtime.InteropServices.PosixSignalRegistration.Create(
+        // бы точку монтирования висеть, а песочницу — на диске.
+        //
+        // Регистрацию ОБЯЗАТЕЛЬНО держать: PosixSignalRegistration снимает
+        // обработчик в финализаторе, а единственная ссылка на него — это
+        // возвращаемое значение. Отброшенное, оно переживало один сбор
+        // мусора, и обработчик исчезал — а цикл FUSE аллоцирует на каждом
+        // readdir, так что это происходило через считанные минуты после
+        // монтирования. Дальше SIGTERM снова становился смертельным, и всё
+        // держалось на гонке с ProcessExit.
+        using var sigterm = System.Runtime.InteropServices.PosixSignalRegistration.Create(
             System.Runtime.InteropServices.PosixSignal.SIGTERM,
             context => { context.Cancel = true; stop.Set(); });
+
+        // Подстраховка на случай, если сигнал всё же дошёл смертельным:
+        // обработчик выхода обязан ДОЖДАТЬСЯ снятия тома, а не просто
+        // попросить о нём. Иначе рантайм завершает процесс, пока основной
+        // поток ещё внутри Dispose, и остаются висящая точка монтирования
+        // и брошенная песочница — ровно то, что этот код должен предотвращать.
+        AppDomain.CurrentDomain.ProcessExit += (_, _) =>
+        {
+            stop.Set();
+            torndown.Wait(TimeSpan.FromSeconds(10));
+        };
+
         stop.Wait();
         Console.WriteLine($"unmounting {mountPoint}");
+        mount.Dispose();
+        torndown.Set();
         return 0;
     }
 #if GITFS_WINFSP

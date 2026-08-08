@@ -35,7 +35,7 @@ public class OverlayTests : IDisposable
         {
             new BranchesView(names), new CommitsView(names), new HistoryView(names),
         });
-        var store = OverlayStore.Create(_overlayBase);
+        var store = OverlayStore.Create(_overlayBase, names: names);
         return (new VfsMountTarget(manager, tree, "fixture", readOnly: false, overlay: store), store);
     }
 

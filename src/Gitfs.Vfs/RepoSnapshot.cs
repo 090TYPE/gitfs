@@ -80,9 +80,18 @@ public sealed class RepoSnapshot : IDisposable
         return false;
     }
 
+    /// <summary>У счётчика есть дно, и уход ниже — это ошибка программиста,
+    /// а не состояние. Без проверки лишний Release освобождал снапшот,
+    /// который менеджер продолжает публиковать: TryAddRef с нуля не проходит
+    /// никогда, и каждый следующий Acquire крутится вечно. Пусть лучше
+    /// падает там, где ошиблись, чем зависает там, где ни при чём.</summary>
     internal void Release()
     {
-        if (Interlocked.Decrement(ref _refs) == 0) Objects.Dispose();
+        var left = Interlocked.Decrement(ref _refs);
+        if (left == 0) Objects.Dispose();
+        else if (left < 0)
+            throw new InvalidOperationException(
+                "snapshot released more times than it was acquired — a lease was disposed twice");
     }
 
     /// <summary>Снимает ссылку создателя. Снапшот, полученный из
@@ -92,12 +101,31 @@ public sealed class RepoSnapshot : IDisposable
 }
 
 /// <summary>Аренда снапшота на время операции: пока жива, снапшот не будет
-/// освобождён, даже если эпоха сменилась и менеджер уже отдал новый.</summary>
-public readonly struct SnapshotLease : IDisposable
+/// освобождён, даже если эпоха сменилась и менеджер уже отдал новый.
+///
+/// Класс, а не структура, и с флагом — намеренно. Инвариант «взята один
+/// раз, отпущена ровно один раз» стоял в спеке и не проверялся нигде, а
+/// цена его нарушения несоразмерна размеру ошибки: лишний Release уводит
+/// счётчик в ноль на снапшоте, который менеджер продолжает публиковать,
+/// TryAddRef с нуля не проходит никогда — и том зависает навсегда, причём
+/// на Linux вместе со всеми процессами, которые к нему прикоснулись.
+/// Структура с идемпотентным Dispose такого не даёт: копия структуры несёт
+/// собственный флаг и «отпускает» второй раз честно.</summary>
+public sealed class SnapshotLease : IDisposable
 {
+    private int _released;
+
     public RepoSnapshot Snapshot { get; }
     internal SnapshotLease(RepoSnapshot snapshot) => Snapshot = snapshot;
-    public void Dispose() => Snapshot.Release();
+
+    /// <summary>Отпустить можно только один раз; повторный вызов ничего не
+    /// делает. Тихо, а не исключением: к моменту второго Dispose исходная
+    /// ошибка уже произошла, и падать здесь значит подменить настоящую
+    /// причину этой. Само владение чинится на месте ошибки.</summary>
+    public void Dispose()
+    {
+        if (Interlocked.Exchange(ref _released, 1) == 0) Snapshot.Release();
+    }
 }
 
 /// <summary>Держатель текущего снапшота. Смена эпохи: mtime-подпись
