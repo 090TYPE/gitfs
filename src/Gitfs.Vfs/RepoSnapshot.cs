@@ -9,6 +9,12 @@ namespace Gitfs.Vfs;
 /// и работает с ним до конца; смена эпохи в середине операции не наблюдается.</summary>
 public sealed class RepoSnapshot : IDisposable
 {
+    /// <summary>Счётчик ссылок: 1 у создателя (менеджера или using-владельца),
+    /// +1 на каждую операцию через Acquire. Освобождает mmap-хендлы, когда
+    /// последний читатель отпустил вытесненный снапшот — закрывает долг M2 №1
+    /// («вытесненный снапшот не диспозится, читатели могут держать ссылку»).</summary>
+    private int _refs = 1;
+
     public string GitDir { get; }
     public RefStore Refs { get; }
     public ObjectReader Objects { get; }
@@ -27,7 +33,38 @@ public sealed class RepoSnapshot : IDisposable
     public static RepoSnapshot Load(string gitDir) =>
         new(gitDir, RefStore.Load(gitDir), new ObjectReader(gitDir));
 
-    public void Dispose() => Objects.Dispose();
+    /// <summary>false — снапшот уже освобождён; вызывающий обязан перечитать
+    /// Current и повторить (гонка с подменой эпохи).</summary>
+    internal bool TryAddRef()
+    {
+        var current = Volatile.Read(ref _refs);
+        while (current > 0)
+        {
+            var prior = Interlocked.CompareExchange(ref _refs, current + 1, current);
+            if (prior == current) return true;
+            current = prior;
+        }
+        return false;
+    }
+
+    internal void Release()
+    {
+        if (Interlocked.Decrement(ref _refs) == 0) Objects.Dispose();
+    }
+
+    /// <summary>Снимает ссылку создателя. Снапшот, полученный из
+    /// SnapshotManager.Current, диспозить НЕЛЬЗЯ — он общий; берите
+    /// аренду через Acquire().</summary>
+    public void Dispose() => Release();
+}
+
+/// <summary>Аренда снапшота на время операции: пока жива, снапшот не будет
+/// освобождён, даже если эпоха сменилась и менеджер уже отдал новый.</summary>
+public readonly struct SnapshotLease : IDisposable
+{
+    public RepoSnapshot Snapshot { get; }
+    internal SnapshotLease(RepoSnapshot snapshot) => Snapshot = snapshot;
+    public void Dispose() => Snapshot.Release();
 }
 
 /// <summary>Держатель текущего снапшота. Смена эпохи: mtime-подпись
@@ -78,9 +115,23 @@ public sealed class SnapshotManager
             if (signature == _signature) return Current;
 
             var fresh = RepoSnapshot.Load(_gitDir);
+            var old = _current;
             _signature = signature;
             Volatile.Write(ref _current, fresh); // публикация = одна запись ссылки
+            old.Release();  // ссылка менеджера; живые аренды додержат снапшот сами
             return fresh;
+        }
+    }
+
+    /// <summary>Аренда на время одной операции адаптера (спека §8: операция
+    /// читает ссылку один раз и работает с ней до конца).</summary>
+    public SnapshotLease Acquire()
+    {
+        while (true)
+        {
+            var snapshot = Refresh();
+            if (snapshot.TryAddRef()) return new SnapshotLease(snapshot);
+            // проиграли гонку с подменой — берём уже опубликованный новый
         }
     }
 
