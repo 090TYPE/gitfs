@@ -63,28 +63,30 @@ public sealed class ObjectReader : IObjectReader, IDisposable
     /// .idx — к M7 вместе с бенчмарками.</summary>
     public ObjectId? FindByPrefix(string hexPrefix)
     {
-        ObjectId? found = null;
+        if (hexPrefix.Length is < 2 or > ObjectId.HexLength) return null;
+        foreach (var c in hexPrefix)
+            if (!Uri.IsHexDigit(c))
+                return null;
+
+        // Дедупликация обязательна: один объект штатно лежит и в loose, и в паке
+        // (repack без -d, или fetch поверх), а два вхождения одного OID — НЕ
+        // неоднозначность. Ревью M4: без множества такой объект «терялся».
+        var matches = new HashSet<ObjectId>();
         bool Accept(in ObjectId candidate)
         {
-            if (!candidate.ToString().StartsWith(hexPrefix, StringComparison.Ordinal)) return true;
-            if (found is not null) { found = null; return false; } // неоднозначно
-            found = candidate;
-            return true;
+            if (!StartsWith(candidate, hexPrefix)) return true;
+            matches.Add(candidate);
+            return matches.Count < 2; // два РАЗНЫХ объекта — ответа нет
         }
 
-        // loose: имя каталога — первые два символа, файла — остальные
-        var looseDir = Path.Combine(_gitDir, "objects");
-        if (Directory.Exists(looseDir) && hexPrefix.Length >= 2)
+        var looseBucket = Path.Combine(_gitDir, "objects", hexPrefix[..2]);
+        if (Directory.Exists(looseBucket))
         {
-            var bucket = Path.Combine(looseDir, hexPrefix[..2]);
-            if (Directory.Exists(bucket))
+            foreach (var file in Directory.EnumerateFiles(looseBucket))
             {
-                foreach (var file in Directory.EnumerateFiles(bucket))
-                {
-                    var hex = hexPrefix[..2] + Path.GetFileName(file);
-                    if (!ObjectId.TryParse(hex, out var id)) continue;
-                    if (!Accept(id)) return null;
-                }
+                var hex = hexPrefix[..2] + Path.GetFileName(file);
+                if (!ObjectId.TryParse(hex, out var id)) continue;
+                if (!Accept(id)) return null;
             }
         }
 
@@ -93,8 +95,29 @@ public sealed class ObjectReader : IObjectReader, IDisposable
                 if (!Accept(id))
                     return null;
 
-        return found;
+        return matches.Count == 1 ? matches.First() : null;
     }
+
+    /// <summary>Сравнение без аллокации 40-символьной строки на объект.</summary>
+    private static bool StartsWith(in ObjectId id, string hexPrefix)
+    {
+        Span<byte> raw = stackalloc byte[ObjectId.RawLength];
+        id.WriteRaw(raw);
+        for (var i = 0; i < hexPrefix.Length; i++)
+        {
+            var nibble = (i & 1) == 0 ? raw[i / 2] >> 4 : raw[i / 2] & 0xf;
+            if (nibble != HexValue(hexPrefix[i])) return false;
+        }
+        return true;
+    }
+
+    private static int HexValue(char c) => c switch
+    {
+        >= '0' and <= '9' => c - '0',
+        >= 'a' and <= 'f' => c - 'a' + 10,
+        >= 'A' and <= 'F' => c - 'A' + 10,
+        _ => -1,
+    };
 
     public Stream OpenStream(in ObjectId id)
     {

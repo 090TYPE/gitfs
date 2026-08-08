@@ -80,6 +80,9 @@ public sealed class RefStore
         if (!Directory.Exists(refsRoot)) return;
         foreach (var file in Directory.EnumerateFiles(refsRoot, "*", SearchOption.AllDirectories))
         {
+            // *.lock — транзиентные файлы git во время записи ссылки; в них
+            // лежит валидный sha, и без фильтра появлялась ветка «main.lock»
+            if (file.EndsWith(".lock", StringComparison.OrdinalIgnoreCase)) continue;
             var name = Path.GetRelativePath(gitDir, file).Replace('\\', '/');
             var content = File.ReadAllText(file).Trim();
             if (ObjectId.TryParse(content, out var target))

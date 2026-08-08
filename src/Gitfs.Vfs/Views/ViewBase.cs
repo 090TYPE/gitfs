@@ -52,7 +52,9 @@ public abstract class ViewBase : IView
             if (type != GitObjectType.Commit) return null;
             return CommitObject.Parse(id, snapshot.Objects.ReadAll(id, MaxCommitBytes));
         }
-        catch (Exception e) when (e is InvalidDataException or FileNotFoundException)
+        // ловим ЛЮБОЙ отказ чтения: обещание докстринга — «не бросает никогда»,
+        // а битый пак умеет кидать и IOException, и ArgumentException (ревью M4)
+        catch (Exception e) when (e is not OutOfMemoryException and not StackOverflowException)
         {
             return null;
         }
@@ -73,8 +75,12 @@ public abstract class ViewBase : IView
         return DateTimeOffset.UnixEpoch;
     }
 
+    /// <summary>HEAD через кэш: ViewTimestamp зовётся из каждого Resolve корня,
+    /// и без кэша коммит парсился заново на каждый вызов (ревью M4).</summary>
     protected static CommitObject? HeadCommit(RepoSnapshot snapshot) =>
-        snapshot.Refs.HeadTarget is { } head ? TryCommit(snapshot, head) : null;
+        snapshot.Refs.HeadTarget is { } head
+            ? snapshot.TipCache.GetOrAdd("HEAD", _ => TryCommit(snapshot, head))
+            : null;
 
     // ---------- спуск по отображаемым именам ----------
 

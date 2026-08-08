@@ -25,15 +25,26 @@ public sealed class RepoSnapshot : IDisposable
     /// <summary>Кэши, привязанные к снапшоту (перф-долг M2 п.4). Снапшот
     /// иммутабелен, поэтому инвалидация не нужна вовсе: смена эпохи создаёт
     /// новый снапшот с пустыми кэшами.</summary>
+    /// <summary>Бюджеты — в БАЙТАХ (спека §7), а не в записях: одно дерево
+    /// может весить мегабайты, и счёт по штукам не ограничивает память.</summary>
     public LruCache<ObjectId, TreeObject> TreeCache { get; } =
-        new(4096, _ => 1);
+        new(64L << 20, t => 64 + t.Entries.Count * 64L);
     /// <summary>ref-имя → вершина (null — битая ветка). Листинг корня вьюхи
     /// иначе парсит коммит на каждую ветку при каждом перечислении.</summary>
     public System.Collections.Concurrent.ConcurrentDictionary<string, CommitObject?> TipCache { get; } = new();
     /// <summary>OID дерева → отображаемые имена. Чистая функция от
     /// иммутабельного объекта при фиксированной политике имён.</summary>
     public LruCache<ObjectId, IReadOnlyList<DisplayName>> ListingCache { get; } =
-        new(4096, _ => 1);
+        new(32L << 20, l => 64 + l.Sum(d => (long)(d.Display.Length + d.GitName.Length) * 2 + 48));
+
+    /// <summary>История пути (history/) — самая дорогая производная: без кэша
+    /// каждый вызов стоит полный обход истории (ревью M4).</summary>
+    public LruCache<string, Views.HistoryView.PathHistory?> HistoryCache { get; } =
+        new(8192, _ => 1);
+
+    /// <summary>Индекс дней (dates/) — тоже полный обход на каждый вызов.</summary>
+    public LruCache<string, IReadOnlyDictionary<string, CommitObject>> DateIndexCache { get; } =
+        new(4, _ => 1);
 
     private RepoSnapshot(string gitDir, RefStore refs, ObjectReader objects)
     {

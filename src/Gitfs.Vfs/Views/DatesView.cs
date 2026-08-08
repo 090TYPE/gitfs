@@ -38,19 +38,31 @@ public sealed class DatesView : ViewBase
 
     /// <summary>День → последний коммит этого дня (состояние на конец дня).
     /// Обход идёт от свежего к старому, поэтому первый встреченный коммит
-    /// дня и есть последний по времени.</summary>
-    private Dictionary<string, CommitObject> DayIndex(RepoSnapshot snapshot)
+    /// дня и есть последний по времени.
+    ///
+    /// День берётся в UTC: иначе коммиты одного момента, сделанные людьми в
+    /// разных поясах, попадали бы в разные дни, и дерево зависело бы от того,
+    /// у кого какой ноутбук (ревью M4). Кэшируется в снапшоте — без кэша
+    /// каждый stat стоил полный обход истории.</summary>
+    private IReadOnlyDictionary<string, CommitObject> DayIndex(RepoSnapshot snapshot)
     {
+        const string key = "dates";
+        if (snapshot.DateIndexCache.TryGet(key, out var cached)) return cached;
+
         var index = new Dictionary<string, CommitObject>(StringComparer.Ordinal);
         var head = HeadCommit(snapshot);
-        if (head is null) return index;
-        var seen = 0;
-        foreach (var commit in snapshot.Revs.FirstParent(head.Id))
+        if (head is not null)
         {
-            if (seen++ >= _limit) break;
-            var day = commit.Committer.When.ToString(DateFormat, CultureInfo.InvariantCulture);
-            index.TryAdd(day, commit);
+            var seen = 0;
+            foreach (var commit in snapshot.Revs.FirstParent(head.Id))
+            {
+                if (seen++ >= _limit) break;
+                var day = commit.Committer.When.UtcDateTime
+                    .ToString(DateFormat, CultureInfo.InvariantCulture);
+                index.TryAdd(day, commit);
+            }
         }
+        snapshot.DateIndexCache.Set(key, index);
         return index;
     }
 

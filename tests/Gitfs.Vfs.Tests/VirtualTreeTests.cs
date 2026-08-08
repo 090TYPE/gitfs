@@ -203,8 +203,13 @@ public class VirtualTreeTests
 
         Assert.Null(tree.Resolve(snap, "branches/broken"));
         Assert.Empty(tree.List(snap, "branches/broken")!);
-        // один битый ref не ломает перечисление всей вьюхи
-        Assert.Contains("broken", tree.List(snap, "branches")!.Select(e => e.Name).ToArray());
+
+        var listed = tree.List(snap, "branches")!.Select(e => e.Name).ToArray();
+        // один битый ref не ломает перечисление всей вьюхи…
+        Assert.Contains("main", listed);
+        // …но и сам в листинге не показывается: List и Resolve обязаны
+        // отвечать одинаково про одно имя (ревью M4)
+        Assert.DoesNotContain("broken", listed);
     }
 
     [Fact]

@@ -12,7 +12,9 @@ namespace Gitfs.Vfs.Views;
 /// Плюс latest.&lt;ext&gt; — версия из опорной точки.
 ///
 /// В папку попадают только коммиты, где файл ДЕЙСТВИТЕЛЬНО менялся:
-/// OID блоба отличается от предыдущего рассмотренного.</summary>
+/// OID блоба отличается от предыдущего. Удаление разрывает цепочку —
+/// файл, воссозданный с прежним содержимым, даёт новую ревизию
+/// (ревью M4: иначе история утверждала бы, что версия появилась раньше).</summary>
 public sealed class HistoryView : ViewBase
 {
     public const string LatestName = "latest";
@@ -30,9 +32,9 @@ public sealed class HistoryView : ViewBase
 
     public override string Name => "history";
 
-    private sealed record Revision(int Ordinal, ObjectId Blob, CommitObject Commit, long Size);
+    public sealed record Revision(int Ordinal, ObjectId Blob, CommitObject Commit, long Size);
 
-    private sealed record PathHistory(IReadOnlyList<Revision> Revisions, bool Truncated);
+    public sealed record PathHistory(IReadOnlyList<Revision> Revisions, bool Truncated);
 
     public override NodeInfo? Resolve(RepoSnapshot snapshot, IReadOnlyList<string> segments)
     {
@@ -40,12 +42,12 @@ public sealed class HistoryView : ViewBase
 
         // §4: последний сегмент — файл версии тогда и только тогда, когда
         // соответствует шаблону И родительский путь существует в истории как
-        // файл. Это допускает файл с именем вида 0001-abcdef.cs в самом
+        // файл. Это допускает файл с именем 0001-abcdef.cs в самом
         // репозитории: его родитель — директория, а не файл.
         if (segments.Count >= 2)
         {
             var parent = segments.Take(segments.Count - 1).ToArray();
-            var history = TryBuildHistory(snapshot, parent);
+            var history = HistoryOf(snapshot, parent);
             if (history is not null)
             {
                 var leaf = segments[^1];
@@ -53,16 +55,16 @@ public sealed class HistoryView : ViewBase
                     return history.Truncated
                         ? new NodeInfo(NodeKind.File, default, 0, ViewTimestamp(snapshot))
                         : null;
-                var revision = MatchVersion(history, leaf);
-                return revision is null
-                    ? null
-                    : new NodeInfo(NodeKind.File, revision.Blob, revision.Size,
+                var revision = MatchVersion(history, parent[^1], leaf);
+                if (revision is not null)
+                    return new NodeInfo(NodeKind.File, revision.Blob, revision.Size,
                         revision.Commit.Committer.When);
+                // не версия — путь может быть настоящей записью дерева
+                // (узел был и файлом, и директорией, §3.1)
             }
         }
 
-        // сам путь: файл в истории — директория версий; директория — обычная
-        if (TryBuildHistory(snapshot, segments) is { } own)
+        if (HistoryOf(snapshot, segments) is { } own)
             return NodeInfo.Directory(own.Revisions.Count > 0
                 ? own.Revisions[0].Commit.Committer.When
                 : ViewTimestamp(snapshot));
@@ -80,27 +82,38 @@ public sealed class HistoryView : ViewBase
         var head = HeadCommit(snapshot);
         if (head is null) yield break;
 
-        if (segments.Count > 0 && TryBuildHistory(snapshot, segments) is { } history)
+        var emitted = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (segments.Count > 0 && HistoryOf(snapshot, segments) is { } history)
         {
             // ЭТО ОНО: файл раскрылся папкой своих версий
-            var extension = Path.GetExtension(segments[^1]);
+            var extension = VersionExtension(segments[^1]);
             foreach (var revision in history.Revisions)
-                yield return new DirEntry(
-                    $"{revision.Ordinal:0000}-{revision.Blob.ToString()[..7]}{extension}",
+            {
+                var name = $"{revision.Ordinal:0000}-{revision.Blob.ToString()[..7]}{extension}";
+                emitted.Add(name);
+                yield return new DirEntry(name,
                     new NodeInfo(NodeKind.File, revision.Blob, revision.Size,
                         revision.Commit.Committer.When));
+            }
             if (history.Revisions.Count > 0)
-                yield return new DirEntry(LatestName + extension,
+            {
+                var latest = LatestName + extension;
+                emitted.Add(latest);
+                yield return new DirEntry(latest,
                     new NodeInfo(NodeKind.File, history.Revisions[0].Blob,
                         history.Revisions[0].Size, history.Revisions[0].Commit.Committer.When));
+            }
             if (history.Truncated)
+            {
                 // молчаливое усечение недопустимо (§3.1)
+                emitted.Add(TruncatedMarker);
                 yield return new DirEntry(TruncatedMarker,
                     new NodeInfo(NodeKind.File, default, 0, ViewTimestamp(snapshot)));
-            yield break;
+            }
+            // §3.1: узел, который был и файлом, и директорией, показывает
+            // и версии, и дочерние записи — падаем ниже, а не выходим
         }
 
-        // обычная директория дерева опорной точки
         ObjectId treeId;
         if (segments.Count == 0)
         {
@@ -112,55 +125,107 @@ public sealed class HistoryView : ViewBase
             if (entry is not { Mode: GitFileMode.Directory }) yield break;
             treeId = entry.Value.Id;
         }
-        // директории остаются директориями, а файлы показываются как папки версий
+        // директории остаются директориями, файлы показываются папками версий
         foreach (var e in ListTree(snapshot, treeId, head.Committer.When))
+        {
+            if (!emitted.Add(e.Name)) continue; // коллизия с именем версии
             yield return e.Info.Kind == NodeKind.File
                 ? new DirEntry(e.Name, NodeInfo.Directory(e.Info.Timestamp))
                 : e;
+        }
     }
 
     // ---------- построение истории пути ----------
 
+    /// <summary>История пути через кэш снапшота: снапшот иммутабелен, поэтому
+    /// инвалидация не нужна. Без кэша адаптер платил полный обход истории
+    /// на КАЖДЫЙ Lookup/Open/ReadDirectory (ревью M4: 2.4 с на 300 коммитах).</summary>
+    private PathHistory? HistoryOf(RepoSnapshot snapshot, IReadOnlyList<string> displaySegments)
+    {
+        var key = Name + "/" + string.Join('/', displaySegments);
+        if (snapshot.HistoryCache.TryGet(key, out var cached)) return cached;
+        var built = BuildHistory(snapshot, displaySegments);
+        snapshot.HistoryCache.Set(key, built!);
+        return built;
+    }
+
     /// <summary>null — путь не является файлом в опорной истории.</summary>
-    private PathHistory? TryBuildHistory(RepoSnapshot snapshot, IReadOnlyList<string> displaySegments)
+    private PathHistory? BuildHistory(RepoSnapshot snapshot, IReadOnlyList<string> displaySegments)
     {
         var head = HeadCommit(snapshot);
         if (head is null) return null;
 
-        // путь должен существовать в опорной точке как файл
+        // путь должен существовать в опорной точке как настоящий файл:
+        // симлинк и гитлинк историей версий не раскрываются (ревью M4)
         var current = ResolveDisplayPath(snapshot, head.Tree, displaySegments);
-        if (current is null || current.Value.Mode == GitFileMode.Directory) return null;
+        if (current is null || !IsVersionableFile(current.Value.Mode)) return null;
 
         var revisions = new List<Revision>();
         ObjectId? previous = null;
         var scanned = 0;
         var truncated = false;
+        CommitObject? last = null;
+        var stoppedByLimit = false;
 
         foreach (var commit in snapshot.Revs.FirstParent(head.Id))
         {
-            if (scanned++ >= _scanLimit) { truncated = true; break; }
+            last = commit;
+            if (scanned++ >= _scanLimit) { truncated = true; stoppedByLimit = true; break; }
             var entry = ResolveDisplayPath(snapshot, commit.Tree, displaySegments);
-            if (entry is null) continue;               // файла тогда ещё не было
-            if (entry.Value.Mode == GitFileMode.Directory) continue;
+            if (entry is null || !IsVersionableFile(entry.Value.Mode))
+            {
+                previous = null; // разрыв присутствия: дальше — новая жизнь файла
+                continue;
+            }
             if (previous is { } prev && prev == entry.Value.Id) continue; // не менялся
 
             previous = entry.Value.Id;
             snapshot.Objects.TryGetHeader(entry.Value.Id, out _, out var size);
             revisions.Add(new Revision(revisions.Count + 1, entry.Value.Id, commit, size));
-            if (revisions.Count >= _limit) { truncated = true; break; }
+            if (revisions.Count >= _limit) { truncated = true; stoppedByLimit = true; break; }
         }
+
+        // обход закончился не по нашему лимиту, а у коммита с родителем —
+        // значит родитель недоступен (shallow/partial-клон), история оборвана
+        if (!stoppedByLimit && last is { Parents.Count: > 0 }) truncated = true;
+
         return new PathHistory(revisions, truncated);
     }
 
-    private static Revision? MatchVersion(PathHistory history, string leaf)
+    private static bool IsVersionableFile(GitFileMode mode) =>
+        mode is GitFileMode.RegularFile or GitFileMode.ExecutableFile;
+
+    /// <summary>Расширение версии — последнее расширение имени; для составных
+    /// имён вроде archive.tar.gz оно и есть «.gz», как у самого файла.</summary>
+    private static string VersionExtension(string fileName) => Path.GetExtension(fileName);
+
+    /// <summary>Строгая грамматика §4: NNNN — ровно цифры, sha — hex длиной
+    /// от 7, расширение обязано совпасть с расширением исходного имени.
+    /// Ревью M4: раньше резолвились фантомы «0001-.txt», «+001-…», «latest.exe».</summary>
+    internal static Revision? MatchVersion(PathHistory history, string fileName, string leaf)
     {
-        var name = Path.GetFileNameWithoutExtension(leaf);
+        var extension = VersionExtension(fileName);
+        if (!leaf.EndsWith(extension, StringComparison.Ordinal)) return null;
+        var name = leaf[..^extension.Length];
+
         if (string.Equals(name, LatestName, StringComparison.Ordinal))
             return history.Revisions.Count > 0 ? history.Revisions[0] : null;
 
         var dash = name.IndexOf('-');
-        if (dash != 4 || !int.TryParse(name[..dash], out var ordinal)) return null;
+        if (dash < 4) return null;
+        for (var i = 0; i < dash; i++)
+            if (!char.IsAsciiDigit(name[i]))
+                return null;
+        if (!int.TryParse(name[..dash], System.Globalization.NumberStyles.None,
+                System.Globalization.CultureInfo.InvariantCulture, out var ordinal))
+            return null;
+
         var sha = name[(dash + 1)..];
+        if (sha.Length < 7 || sha.Length > ObjectId.HexLength) return null;
+        foreach (var c in sha)
+            if (!Uri.IsHexDigit(c))
+                return null;
+
         return history.Revisions.FirstOrDefault(r =>
             r.Ordinal == ordinal && r.Blob.ToString().StartsWith(sha, StringComparison.Ordinal));
     }

@@ -57,10 +57,21 @@ public abstract class RefView : ViewBase
                 var rest = refName[prefix.Length..];
                 var slash = rest.IndexOf('/');
                 var head = slash < 0 ? rest : rest[..slash];
-                if (!seen.Add(head)) continue;
-                var when = slash < 0
-                    ? TipOf(snapshot, RefPrefix + refName)?.Committer.When ?? stamp
-                    : stamp;
+                if (seen.Contains(head)) continue;
+                DateTimeOffset when;
+                if (slash < 0)
+                {
+                    // битая ссылка не резолвится — не показываем и в листинге,
+                    // иначе List и Resolve расходятся на одном имени (ревью M4)
+                    var tipCommit = TipOf(snapshot, RefPrefix + refName);
+                    if (tipCommit is null) continue;
+                    when = tipCommit.Committer.When;
+                }
+                else
+                {
+                    when = stamp;
+                }
+                seen.Add(head);
                 yield return new DirEntry(head, NodeInfo.Directory(when));
             }
             yield break;

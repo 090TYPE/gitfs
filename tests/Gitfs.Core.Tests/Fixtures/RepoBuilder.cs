@@ -84,6 +84,30 @@ public sealed class RepoBuilder : IDisposable
         return Run("rev-parse", "HEAD").Trim();
     }
 
+    /// <summary>Запуск с переопределением переменных окружения — нужен, чтобы
+    /// делать коммиты с разными датами и таймзонами.</summary>
+    public string RunWithEnv((string Key, string Value)[] overrides, params string[] args)
+    {
+        var psi = new ProcessStartInfo("git")
+        {
+            WorkingDirectory = Root,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+        };
+        foreach (var (k, v) in Env) psi.Environment[k] = v;
+        foreach (var (k, v) in overrides) psi.Environment[k] = v;
+        foreach (var a in args) psi.ArgumentList.Add(a);
+
+        using var p = Process.Start(psi)!;
+        var stdout = p.StandardOutput.ReadToEnd();
+        var err = p.StandardError.ReadToEnd();
+        p.WaitForExit();
+        if (p.ExitCode != 0)
+            throw new InvalidOperationException($"git {string.Join(' ', args)} failed ({p.ExitCode}): {err} {stdout}".Trim());
+        return stdout;
+    }
+
     public string RunWithInput(byte[] input, params string[] args)
     {
         var psi = new ProcessStartInfo("git")
