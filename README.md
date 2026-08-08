@@ -119,6 +119,21 @@ ok   overlay                clean
 которой не существовало, — теперь на месте совета настоящая `gitfs purge`,
 а `unmount` объясняет, что том снимается там, где создан.
 
+## Установка
+
+Готовые бинарники — в [релизе v0.1.0](https://github.com/090TYPE/gitfs/releases/tag/v0.1.0),
+рядом с ними `SHA256SUMS.txt`. Манифесты пакетных менеджеров лежат в
+[`packaging/`](packaging/): хеши в них те же, что в релизе, и проверены
+скачиванием по тому же URL.
+
+```bash
+scoop install https://raw.githubusercontent.com/090TYPE/gitfs/main/packaging/scoop/gitfs.json
+```
+
+```bash
+winget install --manifest packaging\winget\090TYPE.gitfs.yaml
+```
+
 **`gitfs tree` работает без установки чего-либо** — это тот же виртуальный слой,
 который увидит Проводник, только выведенный в терминал. Само монтирование
 требует драйвера: на Windows [WinFsp](https://winfsp.dev/rel/) (ставится за
@@ -177,7 +192,7 @@ Linux-контур вдобавок **заново снимает расклад
 | — | Приложение с интерфейсом и треем (Avalonia) | готово |
 | M6 | Адаптер FUSE (Linux) | готово: 28/28 приёмки на томе в Linux |
 | M7 | Ускорители (commit-graph), бенчмарки, нагрузочные тесты | готово |
-| M8 | Релиз: single-file бинарники, winget/scoop | бинарники и `tools/publish.ps1` есть, манифестов нет |
+| M8 | Релиз: single-file бинарники, winget/scoop | [v0.1.0](https://github.com/090TYPE/gitfs/releases/tag/v0.1.0) с хешами, манифесты в `packaging/` |
 
 ## Производительность
 

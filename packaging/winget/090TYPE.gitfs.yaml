@@ -1,0 +1,46 @@
+# winget manifest v1.6, single-file form.
+#
+# Отправляется в microsoft/winget-pkgs пул-реквестом; проверить локально:
+#   winget validate --manifest packaging\winget\090TYPE.gitfs.yaml
+#   winget install --manifest packaging\winget\090TYPE.gitfs.yaml
+#
+# InstallerType: portable — это один exe без установщика, winget сам заведёт
+# для него псевдоним команды. Драйвер WinFsp объявлен зависимостью: без него
+# gitfs собирает и показывает дерево, но том не создаётся.
+PackageIdentifier: 090TYPE.gitfs
+PackageVersion: 0.1.0
+PackageLocale: en-US
+Publisher: 090TYPE
+PublisherUrl: https://github.com/090TYPE
+PackageName: gitfs
+PackageUrl: https://github.com/090TYPE/gitfs
+License: MIT
+LicenseUrl: https://github.com/090TYPE/gitfs/blob/main/LICENSE
+ShortDescription: Mounts a git repository as a drive
+Description: |-
+  Mounts a git repository as a drive. Commits are folders, and a file is a
+  folder too, holding every version of itself. See what a file was three
+  months ago without a checkout, without touching your working copy, and
+  without leaving Explorer, an IDE, grep or Word.
+
+  Writes are allowed and never reach the repository: they land in a
+  copy-on-write sandbox.
+Moniker: gitfs
+Tags:
+- git
+- filesystem
+- version-control
+- virtual-filesystem
+- winfsp
+ReleaseNotesUrl: https://github.com/090TYPE/gitfs/releases/tag/v0.1.0
+Installers:
+- Architecture: x64
+  InstallerType: portable
+  InstallerUrl: https://github.com/090TYPE/gitfs/releases/download/v0.1.0/gitfs-win-x64.exe
+  InstallerSha256: 9398BB8DC390368A616B9AC4E4DB5B5AEADF345F21619F02E8D408E41C5CCAF5
+  PortableCommandAlias: gitfs
+  Dependencies:
+    PackageDependencies:
+    - PackageIdentifier: WinFsp.WinFsp
+ManifestType: singleton
+ManifestVersion: 1.6.0
