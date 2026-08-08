@@ -24,9 +24,9 @@ public sealed class GitfsMount : IDisposable
     /// <param name="mountPoint">Буква вида "G:" или путь к пустой папке.</param>
     /// <exception cref="MountException">Драйвер отсутствует или точка занята.</exception>
     public static GitfsMount Mount(IMountTarget target, string mountPoint,
-        Action<string>? log = null)
+        Action<string>? log = null, bool readOnly = true)
     {
-        var fs = new GitfsFileSystem(target, log);
+        var fs = new GitfsFileSystem(target, log, readOnly);
         var host = new FileSystemHost(fs);
         int status;
         try

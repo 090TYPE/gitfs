@@ -10,7 +10,7 @@ public sealed class VirtualTree
     public VirtualTree(IEnumerable<IView> views)
     {
         _ordered = views.ToList();
-        _views = _ordered.ToDictionary(v => v.Name, StringComparer.Ordinal);
+        _views = _ordered.ToDictionary(v => v.Name, StringComparer.OrdinalIgnoreCase);
     }
 
     public NodeInfo? Resolve(RepoSnapshot snapshot, string path)

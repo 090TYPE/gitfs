@@ -34,7 +34,9 @@ public sealed class RepoSnapshot : IDisposable
     public System.Collections.Concurrent.ConcurrentDictionary<string, CommitObject?> TipCache { get; } = new();
     /// <summary>OID дерева → отображаемые имена. Чистая функция от
     /// иммутабельного объекта при фиксированной политике имён.</summary>
-    public LruCache<ObjectId, IReadOnlyList<DisplayName>> ListingCache { get; } =
+    /// <summary>Ключ включает тег политики: один и тот же OID дерева даёт
+    /// разные отображаемые имена под разными политиками (найдено тестом).</summary>
+    public LruCache<(ObjectId Tree, string Policy), IReadOnlyList<DisplayName>> ListingCache { get; } =
         new(32L << 20, l => 64 + l.Sum(d => (long)(d.Display.Length + d.GitName.Length) * 2 + 48));
 
     /// <summary>История пути (history/) — самая дорогая производная: без кэша

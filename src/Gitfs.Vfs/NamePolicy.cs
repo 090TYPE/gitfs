@@ -47,6 +47,23 @@ public sealed class NamePolicy
     private readonly bool _guardReserved;
     private readonly bool _foldCase;
 
+    /// <summary>Политика свёртывает регистр — значит и РЕЗОЛВ путей обязан
+    /// быть регистронезависимым: WinFsp передаёт имена в произвольном
+    /// регистре (наблюдалось \BRANCHES\MAIN\FILE.TXT), а том объявлен
+    /// case-insensitive. Уникальность гарантирует правило ~N.</summary>
+    public bool FoldsCase => _foldCase;
+
+    /// <summary>Различает политики в ключах кэшей: отображаемые имена —
+    /// функция от дерева И политики, поэтому один OID даёт разные листинги
+    /// под разными политиками.</summary>
+    public string Tag => $"{(_encodeInvalid ? 'e' : '-')}{(_guardReserved ? 'r' : '-')}{(_foldCase ? 'f' : '-')}";
+
+    public StringComparison Comparison =>
+        _foldCase ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+
+    public StringComparer Comparer =>
+        _foldCase ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
+
     private NamePolicy(bool encodeInvalid, bool guardReserved, bool foldCase)
     {
         _encodeInvalid = encodeInvalid;

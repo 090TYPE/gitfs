@@ -11,9 +11,9 @@ public abstract class RefView : ViewBase
 
     protected abstract string RefPrefix { get; }
 
-    protected IReadOnlySet<string> RefNames(RepoSnapshot snapshot)
+    protected HashSet<string> RefNames(RepoSnapshot snapshot)
     {
-        var set = new HashSet<string>(StringComparer.Ordinal);
+        var set = new HashSet<string>(Names.Comparer);
         foreach (var name in snapshot.Refs.All.Keys)
             if (name.StartsWith(RefPrefix, StringComparison.Ordinal))
                 set.Add(name[RefPrefix.Length..]);
@@ -28,7 +28,7 @@ public abstract class RefView : ViewBase
         var array = segments as string[] ?? segments.ToArray();
         var match = PathGrammar.MatchLongestRef(names, array);
         if (match is null)
-            return PathGrammar.IsRefPrefix(names, array)
+            return PathGrammar.IsRefPrefix(names, array, Names.Comparison)
                 ? NodeInfo.Directory(ViewTimestamp(snapshot))
                 : null;
 
@@ -46,14 +46,14 @@ public abstract class RefView : ViewBase
 
         if (match is null)
         {
-            if (array.Length != 0 && !PathGrammar.IsRefPrefix(names, array)) yield break;
+            if (array.Length != 0 && !PathGrammar.IsRefPrefix(names, array, Names.Comparison)) yield break;
             // корень вьюхи или промежуточный сегмент имени ссылки
             var prefix = array.Length == 0 ? "" : string.Join('/', array) + "/";
             var seen = new HashSet<string>(StringComparer.Ordinal);
             var stamp = ViewTimestamp(snapshot);
             foreach (var refName in names.Order(StringComparer.Ordinal))
             {
-                if (!refName.StartsWith(prefix, StringComparison.Ordinal)) continue;
+                if (!refName.StartsWith(prefix, Names.Comparison)) continue;
                 var rest = refName[prefix.Length..];
                 var slash = rest.IndexOf('/');
                 var head = slash < 0 ? rest : rest[..slash];

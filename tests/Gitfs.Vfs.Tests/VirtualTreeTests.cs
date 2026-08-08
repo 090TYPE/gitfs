@@ -157,8 +157,14 @@ public class VirtualTreeTests
         Assert.Equal(repo.Run("rev-parse", "main:case/README").Trim(), upper!.Value.BlobId.ToString());
         Assert.Equal(repo.Run("rev-parse", "main:case/readme").Trim(), lower!.Value.BlobId.ToString());
         Assert.NotEqual(upper.Value.BlobId, lower.Value.BlobId);
-        // сырое имя второго файла НЕ резолвится — только отображаемое
-        Assert.Null(tree.Resolve(snap, "branches/main/case/readme"));
+        // Windows-политика регистронезависима, как и сам том: сырое «readme»
+        // попадает в первую запись (README) — ровно как на NTFS. Различает
+        // два файла именно суффикс ~2, поэтому оба остаются достижимы.
+        Assert.Equal(upper.Value.BlobId, tree.Resolve(snap, "branches/main/case/readme")!.Value.BlobId);
+        // на регистрозависимой политике таких коллизий не возникает вовсе
+        var posix = new VirtualTree(new IView[] { new BranchesView(NamePolicy.Posix) });
+        Assert.Equal(repo.Run("rev-parse", "main:case/readme").Trim(),
+            posix.Resolve(snap, "branches/main/case/readme")!.Value.BlobId.ToString());
     }
 
     [Fact]

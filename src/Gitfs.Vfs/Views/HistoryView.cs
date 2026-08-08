@@ -51,11 +51,11 @@ public sealed class HistoryView : ViewBase
             if (history is not null)
             {
                 var leaf = segments[^1];
-                if (leaf == TruncatedMarker)
+                if (string.Equals(leaf, TruncatedMarker, Names.Comparison))
                     return history.Truncated
                         ? new NodeInfo(NodeKind.File, default, 0, ViewTimestamp(snapshot))
                         : null;
-                var revision = MatchVersion(history, parent[^1], leaf);
+                var revision = MatchVersion(history, parent[^1], leaf, Names.Comparison);
                 if (revision is not null)
                     return new NodeInfo(NodeKind.File, revision.Blob, revision.Size,
                         revision.Commit.Committer.When);
@@ -202,13 +202,14 @@ public sealed class HistoryView : ViewBase
     /// <summary>Строгая грамматика §4: NNNN — ровно цифры, sha — hex длиной
     /// от 7, расширение обязано совпасть с расширением исходного имени.
     /// Ревью M4: раньше резолвились фантомы «0001-.txt», «+001-…», «latest.exe».</summary>
-    internal static Revision? MatchVersion(PathHistory history, string fileName, string leaf)
+    internal static Revision? MatchVersion(PathHistory history, string fileName, string leaf,
+        StringComparison comparison = StringComparison.Ordinal)
     {
         var extension = VersionExtension(fileName);
-        if (!leaf.EndsWith(extension, StringComparison.Ordinal)) return null;
+        if (!leaf.EndsWith(extension, comparison)) return null;
         var name = leaf[..^extension.Length];
 
-        if (string.Equals(name, LatestName, StringComparison.Ordinal))
+        if (string.Equals(name, LatestName, comparison))
             return history.Revisions.Count > 0 ? history.Revisions[0] : null;
 
         var dash = name.IndexOf('-');
@@ -227,6 +228,6 @@ public sealed class HistoryView : ViewBase
                 return null;
 
         return history.Revisions.FirstOrDefault(r =>
-            r.Ordinal == ordinal && r.Blob.ToString().StartsWith(sha, StringComparison.Ordinal));
+            r.Ordinal == ordinal && r.Blob.ToString().StartsWith(sha, StringComparison.OrdinalIgnoreCase));
     }
 }

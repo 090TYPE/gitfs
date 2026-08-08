@@ -23,7 +23,7 @@ public class PathGrammarTests
         Assert.Null(PathGrammar.Split(path));
     }
 
-    private static readonly IReadOnlySet<string> Refs =
+    private static readonly HashSet<string> Refs =
         new HashSet<string>(StringComparer.Ordinal) { "main", "feature/login" };
 
     [Fact]

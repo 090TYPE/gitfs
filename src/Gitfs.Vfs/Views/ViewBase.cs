@@ -31,9 +31,10 @@ public abstract class ViewBase : IView
     protected IReadOnlyList<DisplayName> DisplayNames(RepoSnapshot snapshot, in ObjectId treeId,
         TreeObject tree)
     {
-        if (snapshot.ListingCache.TryGet(treeId, out var cached)) return cached;
+        var key = (treeId, Names.Tag);
+        if (snapshot.ListingCache.TryGet(key, out var cached)) return cached;
         var display = Names.EncodeListing(tree.Entries.Select(e => e.Name));
-        snapshot.ListingCache.Set(treeId, display);
+        snapshot.ListingCache.Set(key, display);
         return display;
     }
 
@@ -96,7 +97,7 @@ public abstract class ViewBase : IView
             TreeEntry? next = null;
             for (var k = 0; k < tree.Entries.Count; k++)
             {
-                if (string.Equals(display[k].Display, segments[i], StringComparison.Ordinal))
+                if (string.Equals(display[k].Display, segments[i], Names.Comparison))
                 {
                     next = tree.Entries[k];
                     break;

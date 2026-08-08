@@ -209,7 +209,7 @@ static int Mount(string[] rest)
     try
     {
         using var mount = GitfsMount.Mount(target, mountPoint,
-            line => Console.Error.WriteLine($"     {line}"));
+            line => Console.Error.WriteLine($"     {line}"), readOnly: false);
         var elapsed = (DateTime.UtcNow - started).TotalSeconds;
         Console.WriteLine($"mounted {mountPoint} · {name} · 5 views · {elapsed:0.0}s");
         Console.WriteLine("press Ctrl+C to unmount");

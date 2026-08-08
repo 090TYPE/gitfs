@@ -21,11 +21,13 @@ public sealed class GitfsFileSystem : FileSystemBase
 
     private readonly IMountTarget _target;
     private readonly Action<string> _log;
+    private readonly bool _readOnly;
 
-    public GitfsFileSystem(IMountTarget target, Action<string>? log = null)
+    public GitfsFileSystem(IMountTarget target, Action<string>? log = null, bool readOnly = true)
     {
         _target = target;
         _log = log ?? (_ => { });
+        _readOnly = readOnly;
     }
 
     // ---------- том ----------
@@ -124,6 +126,72 @@ public sealed class GitfsFileSystem : FileSystemBase
         }
     }
 
+    /// <summary>Создание нового файла — Проводник и приложения зовут именно
+    /// этот колбэк, а не Open. Без него запись по несуществующему пути давала
+    /// «Incorrect function» (найдено живым монтированием).</summary>
+    public override int Create(string fileName, uint createOptions, uint grantedAccess,
+        uint fileAttributes, byte[] securityDescriptor, ulong allocationSize,
+        out object? fileNode, out object? fileDesc, out FspFileInfo fileInfo,
+        out string? normalizedName)
+    {
+        fileNode = null;
+        fileDesc = null;
+        fileInfo = default;
+        normalizedName = null;
+        try
+        {
+            if (_readOnly) return STATUS_MEDIA_WRITE_PROTECTED;
+            const uint FileDirectoryFile = 0x00000001;
+            if ((createOptions & FileDirectoryFile) != 0)
+                // создание директорий песочница не поддерживает (v1)
+                return STATUS_NOT_SUPPORTED;
+
+            var opened = _target.Open(Normalize(fileName), OpenMode.Write);
+            if (!opened.TryGet(out var handle)) return Translate(opened.Error);
+            fileDesc = handle;
+            fileInfo = ToFspInfo(handle.Info);
+            return STATUS_SUCCESS;
+        }
+        catch (Exception e)
+        {
+            return Fail("Create", e);
+        }
+    }
+
+    /// <summary>Перезапись существующего файла (CREATE_ALWAYS): содержимое
+    /// отбрасывается, иначе от прежней версии остаётся хвост.</summary>
+    public override int Overwrite(object fileNode, object fileDesc, uint fileAttributes,
+        bool replaceFileAttributes, ulong allocationSize, out FspFileInfo fileInfo)
+    {
+        fileInfo = default;
+        try
+        {
+            if (fileDesc is not FileHandle handle) return STATUS_INVALID_PARAMETER;
+            var result = _target.SetLength(handle, 0);
+            if (!result.IsOk) return Translate(result.Error);
+            fileInfo = ToFspInfo(handle.Info);
+            return STATUS_SUCCESS;
+        }
+        catch (Exception e)
+        {
+            return Fail("Overwrite", e);
+        }
+    }
+
+    public override int Flush(object fileNode, object fileDesc, out FspFileInfo fileInfo)
+    {
+        fileInfo = default;
+        try
+        {
+            if (fileDesc is FileHandle handle) fileInfo = ToFspInfo(handle.Info);
+            return STATUS_SUCCESS;
+        }
+        catch (Exception e)
+        {
+            return Fail("Flush", e);
+        }
+    }
+
     public override int Write(object fileNode, object fileDesc, IntPtr buffer, ulong offset,
         uint length, bool writeToEndOfFile, bool constrainedIo,
         out uint bytesTransferred, out FspFileInfo fileInfo)
@@ -167,17 +235,57 @@ public sealed class GitfsFileSystem : FileSystemBase
         }
     }
 
+    /// <summary>Приложения меняют атрибуты и времена сплошь и рядом: Remove-Item
+    /// -Force сначала снимает readonly, архиваторы правят время. Виртуальные
+    /// узлы неизменяемы, поэтому запрос принимается и игнорируется — иначе
+    /// базовая реализация отвечает «Incorrect function» и ломает удаление
+    /// целиком (найдено приёмкой на живом томе).</summary>
+    public override int SetBasicInfo(object fileNode, object fileDesc, uint fileAttributes,
+        ulong creationTime, ulong lastAccessTime, ulong lastWriteTime, ulong changeTime,
+        out FspFileInfo fileInfo)
+    {
+        fileInfo = default;
+        try
+        {
+            if (fileDesc is FileHandle handle) fileInfo = ToFspInfo(handle.Info);
+            return STATUS_SUCCESS;
+        }
+        catch (Exception e)
+        {
+            return Fail("SetBasicInfo", e);
+        }
+    }
+
     public override int CanDelete(object fileNode, object fileDesc, string fileName)
     {
         try
         {
-            // проверка возможности: настоящее скрытие делает Cleanup
+            if (_readOnly) return STATUS_MEDIA_WRITE_PROTECTED;
             var lookup = _target.Lookup(Normalize(fileName));
             return lookup.IsOk ? STATUS_SUCCESS : Translate(lookup.Error);
         }
         catch (Exception e)
         {
             return Fail("CanDelete", e);
+        }
+    }
+
+    /// <summary>Современный путь удаления в WinFsp: вызывается вместо
+    /// CanDelete. Без него Remove-Item отвечал «Incorrect function»
+    /// (найдено приёмкой на живом томе).</summary>
+    public override int SetDelete(object fileNode, object fileDesc, string fileName,
+        bool deleteFile)
+    {
+        try
+        {
+            if (_readOnly) return STATUS_MEDIA_WRITE_PROTECTED;
+            if (!deleteFile) return STATUS_SUCCESS; // отмена пометки на удаление
+            var lookup = _target.Lookup(Normalize(fileName));
+            return lookup.IsOk ? STATUS_SUCCESS : Translate(lookup.Error);
+        }
+        catch (Exception e)
+        {
+            return Fail("SetDelete", e);
         }
     }
 
@@ -315,15 +423,20 @@ public sealed class GitfsFileSystem : FileSystemBase
     private static string Normalize(string fileName) =>
         string.IsNullOrEmpty(fileName) ? "/" : fileName.Replace('\\', '/');
 
-    private static uint Attributes(in NodeInfo node) => node.Kind switch
+    /// <summary>Атрибут «только чтение» ставится ТОЛЬКО когда песочницы нет:
+    /// иначе Windows отказывает в открытии на запись, не дойдя до адаптера,
+    /// и overlay становится недостижим (найдено живым монтированием).</summary>
+    private uint Attributes(in NodeInfo node)
     {
-        NodeKind.Directory => FileAttributeDirectory | FileAttributeReadonly,
-        NodeKind.Submodule => FileAttributeDirectory | FileAttributeReadonly,
-        NodeKind.Symlink => FileAttributeNormal | FileAttributeReadonly,
-        _ => FileAttributeNormal | FileAttributeReadonly,
-    };
+        var readOnlyBit = _readOnly ? FileAttributeReadonly : 0;
+        return node.Kind switch
+        {
+            NodeKind.Directory or NodeKind.Submodule => FileAttributeDirectory | readOnlyBit,
+            _ => FileAttributeNormal | readOnlyBit,
+        };
+    }
 
-    private static FspFileInfo ToFspInfo(in NodeInfo node)
+    private FspFileInfo ToFspInfo(in NodeInfo node)
     {
         var time = (ulong)node.Timestamp.UtcDateTime.ToFileTimeUtc();
         return new FspFileInfo
