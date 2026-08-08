@@ -23,6 +23,27 @@
 
 ---
 
+## Ход исполнения (2026-08-08)
+
+- [x] **Task 1** — проект `Gitfs.Mount.WinFsp` с `winfsp.net` 2.2.26215;
+      `Fsp.FileSystemBase` компилируется **без установленного драйвера** —
+      риск §5 снят фактом сборки. Сигнатуры сняты из XML-документации пакета,
+      не угаданы.
+- [x] **Task 2** — `IMountTarget`/`GitfsResult`/`GitfsError`/`FileHandle`/
+      `VolumeInfo` + `VfsMountTarget`; refcount снапшотов (`SnapshotLease`)
+      закрывает долг M2 №1. 11 тестов, включая параллельный со сменой эпох
+      под открытым хендлом.
+- [x] **Task 3** — `GitfsFileSystem : FileSystemBase` + `GitfsMount`;
+      таблица §12 полна и покрыта тестами без драйвера (11 тестов).
+- [x] **Task 4** — `gitfs mount <repo> <target>`: полный стек собран,
+      без драйвера отказывает отчётом doctor, а не падением (проверено).
+- [ ] **Task 5 — приёмка. ТРЕБУЕТ УСТАНОВКИ WinFsp.**
+
+Итого готово: 157 тестов, 0 предупреждений сборки. Всё, что можно проверить
+без драйвера, проверено; всё остальное ждёт одной установки.
+
+---
+
 ### Task 1: Проект адаптера
 
 `dotnet new classlib -n Gitfs.Mount.WinFsp -o src/Gitfs.Mount.WinFsp -f net8.0`;
