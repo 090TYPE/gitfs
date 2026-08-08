@@ -18,12 +18,20 @@
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <!-- winfsp.net ищет свою нативную библиотеку рядом с Assembly.Location,
-         а в single-file он ПУСТ — статический инициализатор падает на пустом
-         пути, и опубликованный бинарник не может смонтировать вообще ничего,
-         хотя драйвер стоит и doctor его видит. Самораспаковка возвращает
-         сборке настоящий путь. Свойство живёт здесь, а не во флагах сборки:
-         забыть флаг — значит выпустить неработающий релиз. -->
+  </PropertyGroup>
+
+  <!-- Только под Windows. winfsp.net ищет свою нативную библиотеку рядом с
+       Assembly.Location, а в single-file он ПУСТ — статический инициализатор
+       падает на пустом пути, и опубликованный бинарник не может смонтировать
+       вообще ничего, хотя драйвер стоит и doctor его видит. Самораспаковка
+       возвращает сборке настоящий путь.
+
+       Под Linux это обоснование не действует: адаптер FUSE находит libfuse3
+       через NativeLibrary.SetDllImportResolver и распаковывать ему нечего.
+       А цена не нулевая — бинарник обязан развернуть весь пакет в $TMPDIR
+       до входа в Main, и в контейнере с read-only файловой системой это
+       отказ на уровне хоста, без единого управляемого сообщения. -->
+  <PropertyGroup Condition="'$(GitfsTargetWindows)' == 'true'">
     <IncludeAllContentForSelfExtract>true</IncludeAllContentForSelfExtract>
   </PropertyGroup>
 

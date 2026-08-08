@@ -16,8 +16,21 @@ done
 
 echo
 echo "=== build the cli ==="
+# Код возврата берётся у dotnet, а не у tail. Без PIPESTATUS ошибка
+# компиляции уходила в никуда: /tmp/dist оставался пустым, цикл ожидания
+# крутился впустую, и обвязка винила /dev/fuse и права контейнера — а
+# настоящее сообщение компилятора уже было отброшено tail-ом.
+publish_log=$(mktemp)
 dotnet publish src/Gitfs.Cli -c Release -r linux-x64 --self-contained false \
-    -p:PublishSingleFile=true -o /tmp/dist --nologo 2>&1 | tail -1
+    -p:PublishSingleFile=true -o /tmp/dist --nologo > "$publish_log" 2>&1
+publish_status=$?
+tail -1 "$publish_log"
+if [ $publish_status -ne 0 ]; then
+    echo "fail the cli did not build; the compiler said:"
+    tail -30 "$publish_log"
+    exit 1
+fi
+[ -x /tmp/dist/gitfs ] || { echo "fail publish produced no /tmp/dist/gitfs"; exit 1; }
 
 echo
 echo "=== mount ==="
@@ -47,9 +60,17 @@ echo
 echo "=== unmount ==="
 kill -TERM "$mount_pid" 2>/dev/null
 wait "$mount_pid" 2>/dev/null
-mountpoint -q /mnt/gitfs && { echo "fail still mounted after SIGTERM"; status=1; }
+teardown=0
+mountpoint -q /mnt/gitfs && { echo "fail still mounted after SIGTERM"; teardown=1; }
 overlays=$(ls "${XDG_STATE_HOME:-$HOME/.local/state}/gitfs/overlay" 2>/dev/null | wc -l)
-[ "$overlays" -eq 0 ] || { echo "fail $overlays overlay(s) left behind"; status=1; }
-echo "ok    volume and sandbox both gone"
+[ "$overlays" -eq 0 ] || { echo "fail $overlays overlay(s) left behind"; teardown=1; }
+# Строка «ok» печаталась безусловно — в том числе сразу после двух строк
+# «fail» над ней. Отчёт, который хвалит то, что только что провалил,
+# хуже отсутствия отчёта.
+if [ "$teardown" -eq 0 ]; then
+    echo "ok    volume and sandbox both gone"
+else
+    status=1
+fi
 
 exit $status

@@ -43,15 +43,29 @@ foreach ($project in $projects) {
 # фреймворк -2147450730, необработанное исключение -532462766. Все они
 # «меньше единицы» и прежнюю проверку проходили — то есть ровно те случаи,
 # ради которых она написана, она и пропускала.
-$cli = Join-Path $out 'gitfs.exe'
-$doctor = & $cli doctor $root
-if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne 1) {
-    Write-Error "published cli is broken: doctor exited $LASTEXITCODE"
-}
-# И вывод обязан быть: молчаливый ноль означает, что бинарник не дошёл до
-# собственного кода.
-if (-not $doctor) { Write-Error "published cli printed nothing: doctor produced no output" }
+# Дымовой прогон возможен только для своей платформы: чужой бинарник эта
+# машина не запустит. Раньше `-Runtime linux-x64` собирал всё как надо, а
+# потом падал на попытке выполнить несуществующий gitfs.exe — публикация
+# уже прошла, а скрипт сообщал об ошибке.
+$exe = if ($Runtime -like 'win-*') { 'gitfs.exe' } else { 'gitfs' }
+$cli = Join-Path $out $exe
+if (-not (Test-Path $cli)) { Write-Error "publish produced no $exe in $out" }
 
+$hostIsWindows = $Runtime -like 'win-*'
+if ($hostIsWindows) {
+    $doctor = & $cli doctor $root
+    if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne 1) {
+        Write-Error "published cli is broken: doctor exited $LASTEXITCODE"
+    }
+    # И вывод обязан быть: молчаливый ноль означает, что бинарник не дошёл
+    # до собственного кода.
+    if (-not $doctor) { Write-Error "published cli printed nothing: doctor produced no output" }
+} else {
+    Write-Host "skipping the smoke test: $Runtime binaries do not run on this host"
+}
+
+Get-ChildItem $out | Where-Object { -not $_.PSIsContainer -and -not $_.Extension } |
+    ForEach-Object { "{0,-16} {1,10:N0} bytes" -f $_.Name, $_.Length }
 Get-ChildItem $out -Filter *.exe | ForEach-Object {
     "{0,-16} {1,10:N0} bytes" -f $_.Name, $_.Length
 }

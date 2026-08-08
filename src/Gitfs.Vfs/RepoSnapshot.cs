@@ -53,18 +53,25 @@ public sealed class RepoSnapshot : IDisposable
     public LruCache<(ObjectId Tree, string Path), CachedEntry> PathCache { get; } =
         new(65536, _ => 1);
 
-    private RepoSnapshot(string gitDir, RefStore refs, ObjectReader objects)
+    private RepoSnapshot(string gitDir, RefStore refs, ObjectReader objects,
+        Core.Accel.CommitGraph? graph)
     {
         GitDir = gitDir;
         Refs = refs;
         Objects = objects;
         Trees = new TreeWalker(objects);
         // commit-graph необязателен: нет — обход идёт через чтение объектов
-        Revs = new RevWalker(objects, Core.Accel.CommitGraph.TryLoad(gitDir));
+        Revs = new RevWalker(objects, graph);
     }
 
-    public static RepoSnapshot Load(string gitDir) =>
-        new(gitDir, RefStore.Load(gitDir), new ObjectReader(gitDir));
+    /// <summary>graph передаётся снаружи, когда вызывающий уже держит
+    /// разобранный граф. Он иммутабелен и адресуется содержимым, поэтому
+    /// движение ссылок его не портит — а перечитывать десятки мегабайт на
+    /// каждую смену эпохи, да ещё под замком менеджера, значит подвешивать
+    /// том на каждый git fetch.</summary>
+    public static RepoSnapshot Load(string gitDir, Core.Accel.CommitGraph? graph = null) =>
+        new(gitDir, RefStore.Load(gitDir), new ObjectReader(gitDir),
+            graph ?? Core.Accel.CommitGraph.TryLoad(gitDir));
 
     /// <summary>false — снапшот уже освобождён; вызывающий обязан перечитать
     /// Current и повторить (гонка с подменой эпохи).</summary>
@@ -177,19 +184,56 @@ public sealed class SnapshotManager : IDisposable
         {
             if (!force && Environment.TickCount64 - _lastCheckTicks < _throttleMs)
                 return Current; // проигравший гонку за окно уходит с текущим
-            _lastCheckTicks = Environment.TickCount64;
 
             var signature = ComputeSignature(_gitDir);
-            if (signature == _signature) return Current;
+            if (signature == _signature)
+            {
+                // Отметка ставится ПОСЛЕ работы, а не до неё. Иначе окно
+                // троттлинга начинает течь с начала долгого чтения, и
+                // операции, пришедшие за это время, всё равно упираются в
+                // замок — то есть троттлинг не защищает ровно в тот момент,
+                // ради которого он существует.
+                _lastCheckTicks = Environment.TickCount64;
+                return Current;
+            }
 
-            var fresh = RepoSnapshot.Load(_gitDir);
+            var fresh = RepoSnapshot.Load(_gitDir, ReuseGraph());
             var old = _current;
             _signature = signature;
+            _lastCheckTicks = Environment.TickCount64;
             Volatile.Write(ref _current, fresh); // публикация = одна запись ссылки
             old.Release();  // ссылка менеджера; живые аренды додержат снапшот сами
             return fresh;
         }
     }
+
+    /// <summary>Граф коммитов, если файл не менялся с прошлого раза.
+    /// Он иммутабелен и адресуется содержимым: перемещение ветки его не
+    /// портит, а перечитывать и разбирать десятки мегабайт на каждую смену
+    /// эпохи — под замком, который держит все операции, — значит подвешивать
+    /// том на каждый git fetch. Сверяемся по имени, размеру и времени
+    /// изменения; изменился — вернём null, и снапшот перечитает сам.</summary>
+    private Core.Accel.CommitGraph? ReuseGraph()
+    {
+        var path = Path.Combine(_gitDir, "objects", "info", "commit-graph");
+        try
+        {
+            var info = new FileInfo(path);
+            if (!info.Exists) { _graph = null; _graphStamp = null; return null; }
+
+            var stamp = $"{info.Length}:{info.LastWriteTimeUtc.Ticks}";
+            if (_graph is not null && _graphStamp == stamp) return _graph;
+
+            _graph = Core.Accel.CommitGraph.TryLoad(_gitDir);
+            _graphStamp = _graph is null ? null : stamp;
+            return _graph;
+        }
+        catch (IOException) { return null; }        // перечитает снапшот
+        catch (UnauthorizedAccessException) { return null; }
+    }
+
+    private Core.Accel.CommitGraph? _graph;
+    private string? _graphStamp;
 
     /// <summary>Аренда на время одной операции адаптера (спека §8: операция
     /// читает ссылку один раз и работает с ней до конца).</summary>

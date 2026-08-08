@@ -47,8 +47,16 @@ public sealed unsafe class GitfsFuseMount : IDisposable
             IsBackground = true,
             Name = $"gitfs-fuse {mountPoint}",
         };
-        _loop.Start();
     }
+
+    /// <summary>Запуск цикла отдельно от конструктора. В конструкторе
+    /// Thread.Start было нельзя: он вызывается ПОСЛЕ успешного fuse_mount,
+    /// и если операционная система откажет в потоке (исчерпан pids.max или
+    /// RLIMIT_NPROC — ровно тот контейнер, в котором проект и тестируется),
+    /// исключение уходит мимо всей уборки. Утекли бы GCHandle, таблица
+    /// операций и сам том — причём точка монтирования осталась бы в
+    /// системе, но обслуживать её было бы некому.</summary>
+    private void StartLoop() => _loop.Start();
 
     public string MountPoint => _mountPoint;
 
@@ -114,7 +122,25 @@ public sealed unsafe class GitfsFuseMount : IDisposable
                     $"could not mount at {mountPoint}: it must be an existing, "
                     + "unused directory, and /dev/fuse must be accessible");
             }
-            return new GitfsFuseMount(fuse, fs, self, operations, mountPoint, log);
+            var mount = new GitfsFuseMount(fuse, fs, self, operations, mountPoint, log);
+            try
+            {
+                mount.StartLoop();
+            }
+            catch (Exception e)
+            {
+                // Поток не поднялся, а том уже в системе — снимаем его сами,
+                // иначе останется точка монтирования, которую никто не
+                // обслуживает, и висящие GCHandle с таблицей операций.
+                Libfuse.Unmount(fuse);
+                Libfuse.Destroy(fuse);
+                self.Free();
+                Marshal.FreeHGlobal(operations);
+                fs.Dispose();
+                throw new FuseMountException(
+                    $"mounted {mountPoint} but could not start the fuse loop: {e.Message}", e);
+            }
+            return mount;
         }
         finally { FreeArgv(argv, options.Count); }
     }
