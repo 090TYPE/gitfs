@@ -19,23 +19,75 @@ public static class Doctor
 
     public static IReadOnlyList<Check> Run(string? repoPath)
     {
-        var checks = new List<Check> { CheckWinFsp(), CheckGit() };
+        // Каждая платформа проверяет СВОЙ драйвер и молчит про чужой:
+        // строка «winfsp: не нужен на этой платформе» под Linux не несла
+        // никакой информации и занимала место там, где должен был стоять
+        // единственный важный вопрос — есть ли libfuse3.
+        var checks = new List<Check> { CheckDriver(), CheckGit() };
         if (OperatingSystem.IsWindows()) checks.Add(CheckDriveLetters());
         if (repoPath is not null) checks.AddRange(CheckRepository(repoPath));
         checks.Add(CheckOverlays());
         return checks;
     }
 
+    private static Check CheckDriver()
+    {
+        if (OperatingSystem.IsWindows()) return CheckWinFsp();
+        if (OperatingSystem.IsLinux()) return CheckFuse();
+        return new Check(CheckStatus.Fail, "adapter", "none for this platform",
+            "macOS needs macFUSE, which gitfs does not carry yet; gitfs tree still works",
+            "docs.gitfs.dev/e/no-adapter");
+    }
+
+    [SupportedOSPlatform("windows")]
     private static Check CheckWinFsp()
     {
-        if (!OperatingSystem.IsWindows())
-            return new Check(CheckStatus.Ok, "winfsp", "not needed on this platform");
         var version = ReadWinFspVersion();
         return version is null
             ? new Check(CheckStatus.Fail, "winfsp", "not installed",
                 $"gitfs needs it to create a volume; install from {WinFspDownload}",
                 "docs.gitfs.dev/e/winfsp-missing")
             : new Check(CheckStatus.Ok, "winfsp", version);
+    }
+
+    /// <summary>Смысл doctor в том, чтобы сказать «не хватает вот этого» ДО
+    /// попытки смонтировать. Под Linux он этого не делал вовсе: показывал
+    /// «winfsp не нужен» и молчал про libfuse3 — а без неё том не создаётся.
+    /// Спрашиваем ровно то, что потребуется адаптеру: саму библиотеку,
+    /// устройство и помощника, через которого монтирует непривилегированный
+    /// пользователь.</summary>
+    private static Check CheckFuse()
+    {
+        var missing = new List<string>();
+
+        var loaded = false;
+        foreach (var candidate in new[] { "libfuse3.so.3", "libfuse3.so", "libfuse.so.3" })
+        {
+            if (!System.Runtime.InteropServices.NativeLibrary.TryLoad(candidate, out var handle))
+                continue;
+            loaded = true;
+            System.Runtime.InteropServices.NativeLibrary.Free(handle);
+            break;
+        }
+        if (!loaded) missing.Add("libfuse3");
+
+        // /dev/fuse — то, что открывает ядро; в контейнере его может не быть
+        // даже когда библиотека установлена
+        if (!File.Exists("/dev/fuse")) missing.Add("/dev/fuse");
+
+        // без fusermount3 монтировать может только root
+        var helper = new[] { "/usr/bin/fusermount3", "/bin/fusermount3", "/usr/local/bin/fusermount3" }
+            .FirstOrDefault(File.Exists);
+        if (helper is null && Environment.GetEnvironmentVariable("USER") != "root")
+            missing.Add("fusermount3");
+
+        if (missing.Count > 0)
+            return new Check(CheckStatus.Fail, "fuse", "missing: " + string.Join(", ", missing),
+                "install the fuse3 package from your distribution "
+                + "(apt install fuse3 · dnf install fuse3 · apk add fuse3)",
+                "docs.gitfs.dev/e/fuse-missing");
+
+        return new Check(CheckStatus.Ok, "fuse", "libfuse3 + /dev/fuse");
     }
 
     [SupportedOSPlatform("windows")]

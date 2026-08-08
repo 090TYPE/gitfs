@@ -10,6 +10,7 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Gitfs.Core.Tests/Gitfs.Core.Tests.csproj" />
+    <Project Path="tests/Gitfs.Diagnostics.Tests/Gitfs.Diagnostics.Tests.csproj" />
     <Project Path="tests/Gitfs.Load.Tests/Gitfs.Load.Tests.csproj" />
     <Project Path="tests/Gitfs.Mount.Fuse.Tests/Gitfs.Mount.Fuse.Tests.csproj" />
     <Project Path="tests/Gitfs.Mount.WinFsp.Tests/Gitfs.Mount.WinFsp.Tests.csproj" />

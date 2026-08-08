@@ -1,0 +1,19 @@
+# Отдельный образ для проверки ОКНА под Linux. Отдельный намеренно: X11,
+# шрифты и imagemagick не нужны ни сборке, ни тестам, ни CI-контуру — тащить
+# их в основной образ значит замедлить то, что гоняется каждый раз, ради
+# того, что гоняется изредка.
+#
+#   docker build -f tools/Dockerfile.linux-gui -t gitfs-linux-gui tools/
+#   см. tools/gui-check.sh
+FROM mcr.microsoft.com/dotnet/sdk:8.0
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        git fuse3 libfuse3-dev pkg-config \
+        xvfb xdotool imagemagick x11-utils \
+        libx11-6 libxrandr2 libxi6 libxcursor1 libxext6 libsm6 libice6 \
+        libfontconfig1 fonts-dejavu-core \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1 DISPLAY=:99
+
+WORKDIR /work
