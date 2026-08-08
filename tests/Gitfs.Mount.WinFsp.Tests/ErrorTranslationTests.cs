@@ -1,3 +1,4 @@
+using System.Reflection;
 using Fsp;
 using Gitfs.Mount.WinFsp;
 using Gitfs.Vfs;
@@ -18,25 +19,28 @@ public class ErrorTranslationTests
     [InlineData(GitfsError.AccessDenied, FileSystemBase.STATUS_ACCESS_DENIED)]
     [InlineData(GitfsError.NotSupported, FileSystemBase.STATUS_NOT_SUPPORTED)]
     [InlineData(GitfsError.TooLarge, FileSystemBase.STATUS_FILE_TOO_LARGE)]
+    [InlineData(GitfsError.IsADirectory, FileSystemBase.STATUS_DIRECTORY_NOT_EMPTY)]
     public void Every_error_maps_to_its_ntstatus(GitfsError error, int expected)
     {
         Assert.Equal(expected, GitfsFileSystem.Translate(error));
     }
 
     [Fact]
-    public void Translation_table_covers_the_whole_enum()
+    public void Every_error_of_the_boundary_is_compared_with_a_case_here()
     {
-        // новый код ошибки не должен молча получить IoError по умолчанию
-        foreach (GitfsError error in Enum.GetValues<GitfsError>())
-        {
-            var status = GitfsFileSystem.Translate(error);
-            if (error == GitfsError.None)
-            {
-                Assert.Equal(FileSystemBase.STATUS_SUCCESS, status);
-                continue;
-            }
-            Assert.NotEqual(FileSystemBase.STATUS_SUCCESS, status);
-        }
+        // Прежняя версия требовала лишь «не STATUS_SUCCESS» — чему
+        // catch-all `_ => STATUS_IO_DEVICE_ERROR` удовлетворяет всегда,
+        // то есть новый код ошибки она бы и не заметила. Сверяем по
+        // именам: у каждого значения обязана быть своя строка выше.
+        var asserted = typeof(ErrorTranslationTests)
+            .GetMethod(nameof(Every_error_maps_to_its_ntstatus))!
+            .GetCustomAttributes<Xunit.InlineDataAttribute>()
+            .Select(a => (GitfsError)a.GetData(null!).First()[0]!)
+            .ToHashSet();
+
+        var missing = Enum.GetValues<GitfsError>().Where(e => !asserted.Contains(e)).ToList();
+        Assert.True(missing.Count == 0,
+            "these would silently become STATUS_IO_DEVICE_ERROR: " + string.Join(", ", missing));
     }
 
     [Fact]

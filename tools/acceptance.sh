@@ -109,13 +109,25 @@ c_dates_iso() {
 c_tags_reachable() { [ -d "$mount_point/tags" ] || echo "tags view missing"; }
 
 c_views_agree() {
-    local sha a b c
+    # Все ТРИ обязаны совпасть. Прежняя версия прикрывала третье сравнение
+    # проверкой существования файла: исчезни history/LICENSE/latest — и
+    # набор молча сверял два представления вместо трёх, оставаясь зелёным.
+    # Пустой вывод здесь означает успех, поэтому «тихо пропустить» и
+    # «пройти» неотличимы.
+    local sha a b c day
     sha="$(git_at rev-parse HEAD)"
+    day="$(ls "$mount_point/dates" | sort | tail -1)"
     a="$mount_point/branches/$branch/LICENSE"
     b="$mount_point/commits/$sha/LICENSE"
     c="$mount_point/history/LICENSE/latest"
+    local d="$mount_point/dates/$day/LICENSE"
+
+    for f in "$b" "$c" "$d"; do
+        [ -f "$f" ] || { echo "missing $f — a view stopped showing the file"; return; }
+    done
     cmp -s "$a" "$b" || { echo "branches and commits disagree"; return; }
-    [ -f "$c" ] && { cmp -s "$a" "$c" || echo "history/latest disagrees"; }
+    cmp -s "$a" "$c" || { echo "history/latest disagrees"; return; }
+    cmp -s "$a" "$d" || { echo "dates/$day disagrees"; return; }
 }
 
 # ---------- ввод-вывод ----------
@@ -155,8 +167,50 @@ c_copy_off() {
 }
 
 c_missing_is_missing() {
-    [ -e "$mount_point/branches/$branch/no-such-file" ] && echo "a missing path exists"
-    return 0
+    # Проверяется ENOENT, а не «что-нибудь пошло не так». Голая проверка
+    # существования одинаково довольна EIO, EACCES и отвалившимся томом —
+    # то есть именно тем, что должна отличать.
+    local p="$mount_point/branches/$branch/no-such-file" out
+    [ -e "$p" ] && { echo "a missing path exists"; return; }
+    out="$(cat "$p" 2>&1)"
+    case "$out" in
+        *"No such file or directory"*) ;;
+        *) echo "wrong error for a missing file: $out"; return ;;
+    esac
+    # и том обязан быть жив — иначе «файла нет» значит «нет ничего»
+    [ -f "$mount_point/branches/$branch/LICENSE" ] || echo "the volume itself is gone"
+}
+
+c_tags_view_matches_git() {
+    # Прежняя проверка называлась «tags view is reachable» и не могла
+    # упасть: она отбрасывала результат и всегда возвращала успех.
+    local on_disk in_git
+    on_disk="$(ls "$mount_point/tags" 2>/dev/null | sort | tr '\n' ' ')"
+    in_git="$(git_at tag --list | sort | tr '\n' ' ')"
+    [ "$on_disk" = "$in_git" ] || echo "volume: [$on_disk] git: [$in_git]"
+}
+
+c_seek_returns_the_right_bytes() {
+    # Не «прочиталось 32 байта», а «те самые 32 байта». И чтение назад:
+    # том обязан отдать начало файла, а не продолжить вперёд.
+    local f="$mount_point/branches/$branch/src/Gitfs.Core/Objects/PackFile.cs"
+    [ -f "$f" ] || { echo "missing $f"; return; }
+    local whole; whole="$(mktemp)"; cp "$f" "$whole"
+    local size; size=$(stat -c %s "$whole")
+    for pos in 4000 $((size / 2)) $((size - 16)); do
+        [ "$pos" -lt 0 ] && continue
+        local want got
+        want="$(dd if="$whole" bs=1 skip="$pos" count=32 2>/dev/null | md5sum)"
+        got="$(dd if="$f" bs=1 skip="$pos" count=32 2>/dev/null | md5sum)"
+        [ "$want" = "$got" ] || { echo "bytes at offset $pos differ"; rm -f "$whole"; return; }
+    done
+    # назад: сперва читаем с 4000, потом со 100 в том же дескрипторе
+    local back
+    back="$(exec 3<"$f"; dd bs=1 skip=4000 count=32 <&3 >/dev/null 2>&1; exec 3<&-;
+            dd if="$f" bs=1 skip=100 count=32 2>/dev/null | md5sum)"
+    local want_back; want_back="$(dd if="$whole" bs=1 skip=100 count=32 2>/dev/null | md5sum)"
+    [ "$back" = "$want_back" ] || echo "reading backwards returned the wrong bytes"
+    rm -f "$whole"
 }
 
 c_directory_is_not_a_file() {
@@ -243,13 +297,13 @@ check "history: latest equals the branch file"   c_latest_equals_branch
 check "commits: recent commits are listed"       c_commits_listed
 check "commits: a full SHA resolves"             c_commit_by_sha
 check "dates: days are listed in ISO form"       c_dates_iso
-check "tags view is reachable"                   c_tags_reachable
+check "tags view matches git tag --list"        c_tags_view_matches_git
 check "three views agree on the same file"       c_views_agree
 check "search across the volume (grep -r)"       c_search
 check "two handles at once"                      c_two_handles
-check "random access (seek)"                     c_seek
+check "seek returns the right bytes"           c_seek_returns_the_right_bytes
 check "copying a file off the volume"            c_copy_off
-check "missing path is reported missing"         c_missing_is_missing
+check "missing path gives ENOENT, not any error" c_missing_is_missing
 check "a directory is not readable as a file"    c_directory_is_not_a_file
 check "overwrite yields exactly what was written" c_overwrite
 check "creating a new file"                      c_create_new

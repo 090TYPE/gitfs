@@ -84,14 +84,24 @@ Check "history: an old version differs from the newest" {
     if ($vs[0].Length -eq $vs[-1].Length) { return "same size $($vs[0].Length)" }
     return $null
 }
+# Сравнение по СОДЕРЖИМОМУ, а не по размеру. Прежняя версия сверяла длину
+# с `cat-file -s`: блоб той же длины с другими байтами проходил её насквозь,
+# хотя проверка называется «content equals git cat-file».
 Check "history: version content equals git cat-file" {
     $dir = "$Drive\history\LICENSE"
     $v = @(Get-ChildItem $dir | Where-Object { $_.Name -match '^0001-' })
     if ($v.Count -eq 0) { return "no 0001- version" }
     $sha = ($v[0].BaseName -split '-')[1]
-    $disk = [System.IO.File]::ReadAllBytes($v[0].FullName)
-    $gitSize = [int]((RunGit @("cat-file","-s",$sha)).Trim())
-    if ($disk.Length -ne $gitSize) { return "sizes differ: disk $($disk.Length), git $gitSize" }
+
+    # git hash-object считает SHA от содержимого файла — совпадение с
+    # префиксом в имени версии доказывает равенство байтов, а не длины
+    $actual = (& git -C $Repo hash-object $v[0].FullName).Trim()
+    if (-not $actual.StartsWith($sha)) {
+        return "version file hashes to $actual, its name claims $sha"
+    }
+    # и этот блоб обязан быть в репозитории
+    $type = (RunGit @("cat-file","-t",$actual)).Trim()
+    if ($type -ne "blob") { return "git does not know $actual as a blob (got '$type')" }
     return $null
 }
 
@@ -112,8 +122,22 @@ Check "dates: days are listed in ISO form" {
     if ($d[0] -notmatch '^\d{4}-\d{2}-\d{2}$') { return "format: $($d[0])" }
     return $null
 }
-Check "tags view is reachable" {
-    $null = Get-ChildItem "$Drive\tags" -ErrorAction SilentlyContinue
+# Прежняя версия глотала ошибку и возвращала успех безусловно: ни один путь
+# кода не мог её провалить. Проверка, которая не может упасть, — это строка
+# «ok» в отчёте и ничего больше.
+Check "tags view lists exactly the tags git knows" {
+    $onDisk = @((Get-ChildItem "$Drive\tags" -ErrorAction Stop).Name | Sort-Object)
+    $inGit = @((RunGit @("tag","--list")) -split "`n" | Where-Object { $_ } | Sort-Object)
+    if (Compare-Object $onDisk $inGit) {
+        return "volume: [$($onDisk -join ', ')] git: [$($inGit -join ', ')]"
+    }
+    # и если теги есть — содержимое под ними должно читаться
+    if ($inGit.Count -gt 0) {
+        $sha = (RunGit @("rev-list","-n","1",$inGit[0])).Trim()
+        $a = (Get-FileHash "$Drive\tags\$($inGit[0])\LICENSE").Hash
+        $b = (Get-FileHash "$Drive\commits\$sha\LICENSE").Hash
+        if ($a -ne $b) { return "tags/$($inGit[0]) disagrees with commits/$sha" }
+    }
     return $null
 }
 Check "three views agree on the same file" {
@@ -144,14 +168,33 @@ Check "two handles at once" {
     if (Compare-Object $x $y) { return "handles disagree" }
     return $null
 }
-Check "random access (seek)" {
+# Проверяются БАЙТЫ, а не их количество. Прежняя версия убеждалась, что
+# прочиталось 32 байта, и была бы довольна любыми тридцатью двумя.
+Check "random access (seek) returns the right bytes" {
     $p = "$Drive\branches\main\src\Gitfs.Core\Objects\PackFile.cs"
+    $whole = [System.IO.File]::ReadAllBytes($p)
+    if ($whole.Length -lt 5000) { return "file too small to seek in: $($whole.Length) B" }
+
+    # три позиции: середина, стык блоков и хвост — читаем врозь и сверяем
+    # с тем же куском, взятым из целого файла
+    foreach ($pos in 4000, 65536, ($whole.Length - 16)) {
+        if ($pos -lt 0 -or $pos -ge $whole.Length) { continue }
+        $want = $whole[$pos..([Math]::Min($pos + 31, $whole.Length - 1))]
+        $fs = [System.IO.File]::OpenRead($p)
+        $fs.Position = $pos
+        $buf = New-Object byte[] $want.Length
+        $n = $fs.Read($buf, 0, $want.Length)
+        $fs.Close()
+        if ($n -ne $want.Length) { return "at $pos read $n of $($want.Length)" }
+        if (Compare-Object $buf $want) { return "bytes at offset $pos differ from the whole file" }
+    }
+
+    # и чтение назад: том обязан отдать то же самое, а не продолжить вперёд
     $fs = [System.IO.File]::OpenRead($p)
-    $fs.Position = 4000
-    $buf = New-Object byte[] 32
-    $n = $fs.Read($buf,0,32)
+    $fs.Position = 4000; $first = New-Object byte[] 32; $null = $fs.Read($first,0,32)
+    $fs.Position = 100;  $back  = New-Object byte[] 32; $null = $fs.Read($back,0,32)
     $fs.Close()
-    if ($n -ne 32) { return "read $n of 32" }
+    if (Compare-Object $back $whole[100..131]) { return "reading backwards returned the wrong bytes" }
     return $null
 }
 Check "copying a file off the volume" {
@@ -174,8 +217,24 @@ Check "copying a file off the volume" {
     }
     return $null
 }
-Check "missing path is reported missing" {
-    if (Test-Path "$Drive\branches\main\no-such-file.txt") { return "path exists" }
+# Проверяется КОД ошибки, а не просто «пути нет». Прежняя версия
+# удовлетворялась любым отказом: EIO, EACCES и «том отвалился» проходили
+# проверку, названную в честь конкретного кода.
+Check "missing path is reported as not found, not as some other error" {
+    $p = "$Drive\branches\main\no-such-file.txt"
+    if (Test-Path $p) { return "path exists" }
+    try {
+        $null = [System.IO.File]::ReadAllBytes($p)
+        return "reading a missing file succeeded"
+    }
+    catch [System.IO.FileNotFoundException] { }
+    catch [System.IO.DirectoryNotFoundException] { }
+    catch {
+        return "wrong error for a missing file: $($_.Exception.GetType().Name): $($_.Exception.Message)"
+    }
+    # а рядом лежащий существующий файл обязан по-прежнему читаться —
+    # иначе «не найдено» может означать «том умер»
+    if (-not (Test-Path "$Drive\branches\main\LICENSE")) { return "the volume itself is gone" }
     return $null
 }
 Check "a directory is not readable as a file" {
