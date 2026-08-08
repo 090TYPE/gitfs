@@ -30,6 +30,12 @@ public sealed class RepoBuilder : IDisposable
     /// здесь, чем расследование там.</summary>
     private static readonly HashSet<string> Taken = new(StringComparer.Ordinal);
 
+    /// <summary>Кто и когда сносил каталоги в этом процессе. Единственное,
+    /// что удаляет их, — Dispose; если git спотыкается об исчезнувший
+    /// каталог, ответ обязан быть здесь.</summary>
+    private static readonly List<string> Disposals = new();
+    private bool _disposed;
+
     public RepoBuilder()
     {
         // Полный GUID и номер процесса вместо восьми знаков: тридцати двух
@@ -114,6 +120,17 @@ public sealed class RepoBuilder : IDisposable
             sb.Append("\n  sibling fixtures: ").Append(
                 Directory.EnumerateDirectories(Path.GetTempPath(), "gitfs-fixture-*").Count());
             lock (Taken) sb.Append("\n  fixtures created by this process: ").Append(Taken.Count);
+            sb.Append("\n  this fixture disposed already: ").Append(_disposed);
+            lock (Disposals)
+            {
+                sb.Append("\n  recent disposals (").Append(Disposals.Count).Append(" total):");
+                foreach (var d in Disposals.TakeLast(5)) sb.Append("\n    ").Append(d);
+            }
+            // Что именно исчезло: git спотыкается об отсутствующий каталог,
+            // значит важно, какие из них ещё на месте
+            foreach (var probe in new[] { ".git", ".git/objects", ".git/objects/pack", ".git/refs" })
+                sb.Append("\n  ").Append(probe).Append(": ")
+                  .Append(Directory.Exists(Path.Combine(Root, probe)) ? "ok" : "MISSING");
             sb.Append("\n  fsck: ").Append(Quiet("fsck", "--connectivity-only"));
         }
         catch (Exception e) { sb.Append("\n  (diagnosis failed: ").Append(e.Message).Append(')'); }
@@ -257,6 +274,11 @@ public sealed class RepoBuilder : IDisposable
 
     public void Dispose()
     {
+        lock (Disposals)
+        {
+            Disposals.Add($"{DateTime.UtcNow:HH:mm:ss.fff} {Root}");
+            _disposed = true;
+        }
         // git помечает loose-объекты read-only — Windows не даст удалить без снятия атрибута
         try
         {
