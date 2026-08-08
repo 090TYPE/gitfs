@@ -12,4 +12,7 @@
     <Project Path="tests/Gitfs.Mount.WinFsp.Tests/Gitfs.Mount.WinFsp.Tests.csproj" />
     <Project Path="tests/Gitfs.Vfs.Tests/Gitfs.Vfs.Tests.csproj" />
   </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/Gitfs.Bench/Gitfs.Bench.csproj" />
+  </Folder>
 </Solution>

@@ -35,3 +35,7 @@ public readonly struct NodeInfo
 }
 
 public readonly record struct DirEntry(string Name, NodeInfo Info);
+
+/// <summary>Обёртка для кэша: nullable-структура как значение LruCache
+/// требует ссылочного типа, чтобы «путь отсутствует» тоже кэшировалось.</summary>
+public sealed record CachedEntry(TreeEntry? Entry);

@@ -48,13 +48,19 @@ public sealed class RepoSnapshot : IDisposable
     public LruCache<string, IReadOnlyDictionary<string, CommitObject>> DateIndexCache { get; } =
         new(4, _ => 1);
 
+    /// <summary>Разрешение пути в дереве: (дерево, путь+политика) → запись.
+    /// Чистая функция от иммутабельных данных, инвалидация не нужна.</summary>
+    public LruCache<(ObjectId Tree, string Path), CachedEntry> PathCache { get; } =
+        new(65536, _ => 1);
+
     private RepoSnapshot(string gitDir, RefStore refs, ObjectReader objects)
     {
         GitDir = gitDir;
         Refs = refs;
         Objects = objects;
         Trees = new TreeWalker(objects);
-        Revs = new RevWalker(objects);
+        // commit-graph необязателен: нет — обход идёт через чтение объектов
+        Revs = new RevWalker(objects, Core.Accel.CommitGraph.TryLoad(gitDir));
     }
 
     public static RepoSnapshot Load(string gitDir) =>

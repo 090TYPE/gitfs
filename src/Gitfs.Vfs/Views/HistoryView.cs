@@ -164,14 +164,24 @@ public sealed class HistoryView : ViewBase
         ObjectId? previous = null;
         var scanned = 0;
         var truncated = false;
-        CommitObject? last = null;
         var stoppedByLimit = false;
+        ObjectId? previousTree = null;
 
-        foreach (var commit in snapshot.Revs.FirstParent(head.Id))
+        // Обход берёт только идентификатор и дерево: автор и сообщение здесь
+        // не нужны, а через commit-graph это чтение индекса вместо распаковки.
+        ObjectId? lastId = null;
+        foreach (var (commitId, commitTree) in snapshot.Revs.FirstParentTrees(head.Id))
         {
-            last = commit;
+            lastId = commitId;
             if (scanned++ >= _scanLimit) { truncated = true; stoppedByLimit = true; break; }
-            var entry = ResolveDisplayPath(snapshot, commit.Tree, displaySegments);
+
+            // Дерево коммита не изменилось — значит и путь в нём тот же.
+            // Подавляющее большинство коммитов не трогают конкретный файл,
+            // и этот выход убирает спуск по дереву целиком.
+            if (previousTree is { } prevTree && prevTree == commitTree) continue;
+            previousTree = commitTree;
+
+            var entry = ResolveDisplayPath(snapshot, commitTree, displaySegments);
             if (entry is null || !IsVersionableFile(entry.Value.Mode))
             {
                 previous = null; // разрыв присутствия: дальше — новая жизнь файла
@@ -180,6 +190,10 @@ public sealed class HistoryView : ViewBase
             if (previous is { } prev && prev == entry.Value.Id) continue; // не менялся
 
             previous = entry.Value.Id;
+            // коммит разбирается только ради даты ревизии — а таких коммитов
+            // единицы против тысяч просмотренных
+            var commit = snapshot.Revs.TryRead(commitId);
+            if (commit is null) continue;
             snapshot.Objects.TryGetHeader(entry.Value.Id, out _, out var size);
             revisions.Add(new Revision(revisions.Count + 1, entry.Value.Id, commit, size));
             if (revisions.Count >= _limit) { truncated = true; stoppedByLimit = true; break; }
@@ -187,7 +201,9 @@ public sealed class HistoryView : ViewBase
 
         // обход закончился не по нашему лимиту, а у коммита с родителем —
         // значит родитель недоступен (shallow/partial-клон), история оборвана
-        if (!stoppedByLimit && last is { Parents.Count: > 0 }) truncated = true;
+        if (!stoppedByLimit && lastId is { } tail
+            && snapshot.Revs.TryRead(tail) is { Parents.Count: > 0 })
+            truncated = true;
 
         return new PathHistory(revisions, truncated);
     }

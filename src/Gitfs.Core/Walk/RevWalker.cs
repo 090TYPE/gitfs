@@ -1,3 +1,4 @@
+using Gitfs.Core.Accel;
 using Gitfs.Core.Objects;
 
 namespace Gitfs.Core.Walk;
@@ -7,40 +8,23 @@ namespace Gitfs.Core.Walk;
 ///
 /// Обход ОСТАНАВЛИВАЕТСЯ на границе доступного, а не падает: у shallow- и
 /// partial-клонов граничный коммит ссылается на родителя, которого нет в
-/// объектах. Ревью M4: без этого три вьюхи из пяти умирали на любом
-/// `git clone --depth`.</summary>
+/// объектах (ревью M4: без этого три вьюхи из пяти умирали на любом
+/// `git clone --depth`).
+///
+/// При наличии commit-graph (§6.7) шаги по истории читают 36 байт индекса
+/// вместо распаковки объекта — на 10 000 коммитов это разница между
+/// секундами и миллисекундами.</summary>
 public sealed class RevWalker
 {
     private const long MaxCommitBytes = 16L << 20;
 
     private readonly ObjectReader _reader;
+    private readonly CommitGraph? _graph;
 
-    public RevWalker(ObjectReader reader) => _reader = reader;
-
-    /// <summary>Истина, если обход оборвался раньше корня истории — вызывающий
-    /// может показать это пользователю (маркер .truncated).</summary>
-    public bool TryWalkFirstParent(ObjectId from, int limit, out List<CommitObject> commits,
-        out bool truncated)
+    public RevWalker(ObjectReader reader, CommitGraph? graph = null)
     {
-        commits = new List<CommitObject>();
-        truncated = false;
-        var current = from;
-        while (commits.Count < limit)
-        {
-            var commit = TryRead(current);
-            if (commit is null)
-            {
-                // граница shallow-клона или битый объект: то, что уже собрано,
-                // остаётся валидным — сообщаем об обрыве
-                truncated = commits.Count > 0 || !current.Equals(from);
-                return commits.Count > 0;
-            }
-            commits.Add(commit);
-            if (commit.Parents.Count == 0) return true;
-            current = commit.Parents[0];
-        }
-        truncated = true;
-        return true;
+        _reader = reader;
+        _graph = graph;
     }
 
     public IEnumerable<CommitObject> FirstParent(ObjectId from)
@@ -56,7 +40,30 @@ public sealed class RevWalker
         }
     }
 
-    private CommitObject? TryRead(ObjectId id)
+    /// <summary>Шаги по истории без разбора коммитов: отдаёт только то, что
+    /// нужно обходу — сам коммит, его дерево и первого родителя. Вьюхи,
+    /// которым не нужны автор и сообщение, идут этим путём.</summary>
+    public IEnumerable<(ObjectId Id, ObjectId Tree)> FirstParentTrees(ObjectId from)
+    {
+        var current = from;
+        while (true)
+        {
+            if (_graph is not null && _graph.TryGetCommit(current, out var tree, out var parent))
+            {
+                yield return (current, tree);
+                if (parent is null) yield break;
+                current = parent.Value;
+                continue;
+            }
+            var commit = TryRead(current);
+            if (commit is null) yield break;
+            yield return (commit.Id, commit.Tree);
+            if (commit.Parents.Count == 0) yield break;
+            current = commit.Parents[0];
+        }
+    }
+
+    public CommitObject? TryRead(ObjectId id)
     {
         try
         {
