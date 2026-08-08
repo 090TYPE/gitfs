@@ -4,6 +4,7 @@
     <ProjectReference Include="..\Gitfs.Core\Gitfs.Core.csproj" />
     <ProjectReference Include="..\Gitfs.Vfs\Gitfs.Vfs.csproj" />
     <ProjectReference Include="..\Gitfs.Mount.WinFsp\Gitfs.Mount.WinFsp.csproj" />
+    <ProjectReference Include="..\Gitfs.Diagnostics\Gitfs.Diagnostics.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

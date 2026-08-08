@@ -3,6 +3,7 @@
     <Project Path="src/Gitfs.App/Gitfs.App.csproj" />
     <Project Path="src/Gitfs.Cli/Gitfs.Cli.csproj" />
     <Project Path="src/Gitfs.Core/Gitfs.Core.csproj" />
+    <Project Path="src/Gitfs.Diagnostics/Gitfs.Diagnostics.csproj" />
     <Project Path="src/Gitfs.Mount.WinFsp/Gitfs.Mount.WinFsp.csproj" />
     <Project Path="src/Gitfs.Vfs/Gitfs.Vfs.csproj" />
   </Folder>

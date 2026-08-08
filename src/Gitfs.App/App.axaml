@@ -3,6 +3,23 @@
              x:Class="Gitfs.App.App"
              RequestedThemeVariant="Dark">
 
+  <!-- Трей: приложение живёт в фоне, пока смонтирован хотя бы один том -->
+  <TrayIcon.Icons>
+    <TrayIcons>
+      <TrayIcon Icon="/Assets/gitfs.ico" ToolTipText="gitfs"
+                Clicked="OnTrayClicked">
+        <TrayIcon.Menu>
+          <NativeMenu>
+            <NativeMenuItem Header="Open gitfs" Click="OnTrayOpen" />
+            <NativeMenuItem Header="Mount…" Click="OnTrayMount" />
+            <NativeMenuItemSeparator />
+            <NativeMenuItem Header="Quit" Click="OnTrayQuit" />
+          </NativeMenu>
+        </TrayIcon.Menu>
+      </TrayIcon>
+    </TrayIcons>
+  </TrayIcon.Icons>
+
   <Application.Styles>
     <FluentTheme />
 

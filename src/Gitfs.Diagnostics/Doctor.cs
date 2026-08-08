@@ -1,6 +1,6 @@
 using System.Runtime.Versioning;
 
-namespace Gitfs.Cli;
+namespace Gitfs.Diagnostics;
 
 public enum CheckStatus { Ok, Warn, Fail }
 
@@ -12,7 +12,7 @@ public sealed record Check(CheckStatus Status, string Name, string Value,
     string? Fix = null, string? Link = null);
 
 /// <summary>Проверки среды. Ничего не мутирует: только смотрит.</summary>
-public static class Diagnostics
+public static class Doctor
 {
     public const string WinFspRegistryKey = @"SOFTWARE\WOW6432Node\WinFsp";
     public const string WinFspDownload = "winfsp.dev/rel";

@@ -1,4 +1,4 @@
-using Gitfs.Cli;
+using Gitfs.Diagnostics;
 using Gitfs.Core.Tests.Fixtures;
 
 namespace Gitfs.Vfs.Tests;
@@ -12,7 +12,7 @@ public class CliTests
         repo.WriteFile("a.txt", "a\n");
         repo.CommitAll("first");
 
-        var checks = Diagnostics.Run(repo.Root);
+        var checks = Doctor.Run(repo.Root);
         var byName = checks.ToDictionary(c => c.Name);
 
         Assert.Equal(CheckStatus.Ok, byName["repository"].Status);
@@ -29,7 +29,7 @@ public class CliTests
         Directory.CreateDirectory(tmp);
         try
         {
-            var checks = Diagnostics.Run(tmp);
+            var checks = Doctor.Run(tmp);
             var repoCheck = checks.Single(c => c.Name == "repository");
             Assert.Equal(CheckStatus.Fail, repoCheck.Status);
             Assert.NotNull(repoCheck.Fix); // каждый fail несёт «что сделать»
@@ -46,7 +46,7 @@ public class CliTests
         repo.CommitAll("first");
         File.WriteAllText(Path.Combine(repo.GitDir, "shallow"), "");
 
-        var history = Diagnostics.Run(repo.Root).Single(c => c.Name == "history");
+        var history = Doctor.Run(repo.Root).Single(c => c.Name == "history");
         Assert.Equal(CheckStatus.Warn, history.Status);
         Assert.Contains("unshallow", history.Fix);
     }
@@ -78,8 +78,8 @@ public class CliTests
         repo.WriteFile("a.txt", "a\n");
         repo.CommitAll("first");
 
-        Assert.Equal(repo.GitDir, Diagnostics.ResolveGitDir(repo.Root));
-        Assert.Equal(repo.GitDir, Diagnostics.ResolveGitDir(repo.GitDir)); // сам .git
-        Assert.Null(Diagnostics.ResolveGitDir(Path.GetTempPath()));
+        Assert.Equal(repo.GitDir, Doctor.ResolveGitDir(repo.Root));
+        Assert.Equal(repo.GitDir, Doctor.ResolveGitDir(repo.GitDir)); // сам .git
+        Assert.Null(Doctor.ResolveGitDir(Path.GetTempPath()));
     }
 }

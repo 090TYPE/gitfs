@@ -6,8 +6,13 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets/gitfs.ico</ApplicationIcon>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
   </PropertyGroup>
+
+  <ItemGroup>
+    <AvaloniaResource Include="Assets/**" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Avalonia" Version="11.2.3" />
@@ -19,7 +24,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Gitfs.Core\Gitfs.Core.csproj" />
     <ProjectReference Include="..\Gitfs.Vfs\Gitfs.Vfs.csproj" />
-    <ProjectReference Include="..\Gitfs.Cli\Gitfs.Cli.csproj" />
+    <ProjectReference Include="..\Gitfs.Diagnostics\Gitfs.Diagnostics.csproj" />
   </ItemGroup>
 
   <!-- Адаптер WinFsp только под Windows: на Linux/macOS проект собирается

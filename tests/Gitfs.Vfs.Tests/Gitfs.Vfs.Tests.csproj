@@ -25,6 +25,7 @@
     <ProjectReference Include="..\..\src\Gitfs.Core\Gitfs.Core.csproj" />
     <ProjectReference Include="..\Gitfs.Core.Tests\Gitfs.Core.Tests.csproj" />
     <ProjectReference Include="..\..\src\Gitfs.Cli\Gitfs.Cli.csproj" />
+    <ProjectReference Include="..\..\src\Gitfs.Diagnostics\Gitfs.Diagnostics.csproj" />
   </ItemGroup>
 
 </Project>

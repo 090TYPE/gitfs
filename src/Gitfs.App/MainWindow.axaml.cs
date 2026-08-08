@@ -3,7 +3,7 @@ using Avalonia.Interactivity;
 using Avalonia.Layout;
 
 using Avalonia.Media;
-using Gitfs.Cli;
+using Gitfs.Diagnostics;
 
 namespace Gitfs.App;
 
@@ -11,9 +11,17 @@ public partial class MainWindow : Window
 {
     private readonly List<MountEntry> _mounts = new();
 
+    /// <summary>Трей показывает состояние монтирований без открытия окна.</summary>
+    public event Action? MountsChanged;
+
+    /// <summary>Точка входа из меню трея.</summary>
+    public void OpenMountDialog() => OnMountClicked(this, new RoutedEventArgs());
+
     public MainWindow()
     {
         InitializeComponent();
+        // окно прячется в трей, тома продолжают жить
+        Closing += (_, e) => { e.Cancel = true; Hide(); };
         PlatformBadge.Text = OperatingSystem.IsWindows() ? "windows"
             : OperatingSystem.IsMacOS() ? "macos" : "linux";
         if (!MountService.Instance.CanMount)
@@ -33,6 +41,7 @@ public partial class MainWindow : Window
         EmptyState.IsVisible = _mounts.Count == 0;
         MountsList.IsVisible = _mounts.Count > 0;
         UnmountButton.IsEnabled = MountsList.SelectedItem is MountEntry;
+        MountsChanged?.Invoke();
     }
 
     // ---------- боковая панель ----------

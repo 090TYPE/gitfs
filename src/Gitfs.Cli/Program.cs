@@ -1,4 +1,5 @@
-using Gitfs.Cli;
+
+using Gitfs.Diagnostics;
 using Gitfs.Core;
 using Gitfs.Vfs;
 using Gitfs.Vfs.Views;
@@ -15,7 +16,7 @@ try
 {
     return args[0] switch
     {
-        "doctor" => Doctor(args.Skip(1).ToArray()),
+        "doctor" => RunDoctor(args.Skip(1).ToArray()),
         "tree" => Tree(args.Skip(1).ToArray()),
         "cat" => Cat(args.Skip(1).ToArray()),
         "list" => List(),
@@ -60,10 +61,10 @@ static VirtualTree BuildTree()
     });
 }
 
-static int Doctor(string[] rest)
+static int RunDoctor(string[] rest)
 {
     var repo = rest.FirstOrDefault();
-    var checks = Diagnostics.Run(repo is null ? null : Path.GetFullPath(repo));
+    var checks = Doctor.Run(repo is null ? null : Path.GetFullPath(repo));
     Console.Write(Report.Render(checks));
     return Report.ExitCode(checks);
 }
@@ -77,7 +78,7 @@ static int Tree(string[] rest)
         Console.Error.WriteLine("fail gitfs tree needs a repository path");
         return 1;
     }
-    var gitDir = Diagnostics.ResolveGitDir(Path.GetFullPath(rest[0]));
+    var gitDir = Doctor.ResolveGitDir(Path.GetFullPath(rest[0]));
     if (gitDir is null)
     {
         Console.Error.WriteLine($"fail no .git directory in {rest[0]}");
@@ -119,7 +120,7 @@ static int Cat(string[] rest)
         Console.Error.WriteLine(@"     → for example: gitfs cat . history/README.md/latest.md");
         return 1;
     }
-    var gitDir = Diagnostics.ResolveGitDir(Path.GetFullPath(rest[0]));
+    var gitDir = Doctor.ResolveGitDir(Path.GetFullPath(rest[0]));
     if (gitDir is null)
     {
         Console.Error.WriteLine($"fail no .git directory in {rest[0]}");
@@ -188,7 +189,7 @@ static int Mount(string[] rest)
     var repoPath = Path.GetFullPath(rest[0]);
     var mountPoint = rest[1];
 
-    var checks = Diagnostics.Run(repoPath);
+    var checks = Doctor.Run(repoPath);
     var blockers = checks.Where(c => c.Status == CheckStatus.Fail).ToList();
     if (blockers.Count > 0)
     {
@@ -196,7 +197,7 @@ static int Mount(string[] rest)
         return 1;
     }
 
-    var gitDir = Diagnostics.ResolveGitDir(repoPath)!;
+    var gitDir = Doctor.ResolveGitDir(repoPath)!;
     var manager = new SnapshotManager(gitDir);
     var tree = BuildTree();
     var name = new DirectoryInfo(repoPath).Name;
@@ -223,7 +224,7 @@ static int Mount(string[] rest)
     catch (MountException e)
     {
         Console.Error.WriteLine($"fail {e.Message}");
-        Console.Error.WriteLine($"     → install it from {Diagnostics.WinFspDownload} and run gitfs doctor again");
+        Console.Error.WriteLine($"     → install it from {Doctor.WinFspDownload} and run gitfs doctor again");
         return 1;
     }
 }

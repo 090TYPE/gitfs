@@ -1,4 +1,4 @@
-using Gitfs.Cli;
+using Gitfs.Diagnostics;
 using Gitfs.Vfs;
 using Gitfs.Vfs.Overlay;
 using Gitfs.Vfs.Views;
@@ -57,9 +57,9 @@ public sealed class MountService
         return new VirtualTree(list);
     }
 
-    public static string? ResolveGitDir(string repoPath) => Diagnostics.ResolveGitDir(repoPath);
+    public static string? ResolveGitDir(string repoPath) => Doctor.ResolveGitDir(repoPath);
 
-    public static IReadOnlyList<Check> Diagnose(string? repoPath) => Diagnostics.Run(repoPath);
+    public static IReadOnlyList<Check> Diagnose(string? repoPath) => Doctor.Run(repoPath);
 
     public static IReadOnlyList<char> FreeDriveLetters()
     {

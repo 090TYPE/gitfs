@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace Gitfs.Cli;
+namespace Gitfs.Diagnostics;
 
 /// <summary>Отрисовка отчёта doctor по макету дизайн-отдела.
 /// ANSI: ok — green 2, warn — yellow 3, fail — red 1. Больше цветов нет.
