@@ -51,8 +51,11 @@ public static class Diagnostics
             : "installed";
     }
 
+    /// <summary>Запуск git ограничен таймаутом: внешний процесс не должен
+    /// уметь подвесить вызывающего (в GUI это замораживало окно).</summary>
     private static Check CheckGit()
     {
+        const int timeoutMs = 5000;
         try
         {
             var psi = new System.Diagnostics.ProcessStartInfo("git", "--version")
@@ -60,10 +63,17 @@ public static class Diagnostics
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,
+                CreateNoWindow = true,
             };
             using var p = System.Diagnostics.Process.Start(psi)!;
-            var output = p.StandardOutput.ReadToEnd().Trim();
-            p.WaitForExit();
+            var reader = p.StandardOutput.ReadToEndAsync();
+            if (!p.WaitForExit(timeoutMs))
+            {
+                try { p.Kill(entireProcessTree: true); } catch (Exception) { /* уже умер */ }
+                return new Check(CheckStatus.Warn, "git", "did not respond",
+                    "gitfs reads repositories directly; git is only needed for tests");
+            }
+            var output = reader.GetAwaiter().GetResult().Trim();
             return p.ExitCode == 0
                 ? new Check(CheckStatus.Ok, "git", output.Replace("git version ", ""))
                 : new Check(CheckStatus.Warn, "git", "not usable",

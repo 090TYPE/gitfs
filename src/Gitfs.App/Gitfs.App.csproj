@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="11.2.3" />
+    <PackageReference Include="Avalonia.Desktop" Version="11.2.3" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.2.3" />
+    <PackageReference Include="Avalonia.Fonts.Inter" Version="11.2.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Gitfs.Core\Gitfs.Core.csproj" />
+    <ProjectReference Include="..\Gitfs.Vfs\Gitfs.Vfs.csproj" />
+    <ProjectReference Include="..\Gitfs.Cli\Gitfs.Cli.csproj" />
+  </ItemGroup>
+
+  <!-- Адаптер WinFsp только под Windows: на Linux/macOS проект собирается
+       без него, монтирование блокируется до вехи M6 (FUSE). -->
+  <ItemGroup Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::Windows)))' == 'true'">
+    <ProjectReference Include="..\Gitfs.Mount.WinFsp\Gitfs.Mount.WinFsp.csproj" />
+    <PackageReference Include="Avalonia.Win32" Version="11.2.3" />
+  </ItemGroup>
+
+  <PropertyGroup Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::Windows)))' == 'true'">
+    <DefineConstants>$(DefineConstants);GITFS_WINFSP</DefineConstants>
+  </PropertyGroup>
+
+</Project>

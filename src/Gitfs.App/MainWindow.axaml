@@ -1,0 +1,95 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:app="using:Gitfs.App"
+        x:Class="Gitfs.App.MainWindow"
+        x:DataType="app:MountEntry"
+        Title="gitfs" Width="960" Height="620"
+        MinWidth="760" MinHeight="480">
+
+  <Grid RowDefinitions="Auto,*,Auto">
+
+    <!-- шапка -->
+    <Border Grid.Row="0" Padding="18,14" Background="#1b1d2b">
+      <Grid ColumnDefinitions="Auto,*,Auto,Auto">
+        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+          <TextBlock Text="gitfs" FontFamily="Cascadia Mono, Consolas, monospace"
+                     FontSize="18" FontWeight="Medium" Foreground="#e9e9ed" />
+          <Border Background="#3f424d" CornerRadius="6" Padding="8,3" VerticalAlignment="Center">
+            <TextBlock x:Name="PlatformBadge" Text="windows" FontSize="11" Foreground="#e4e7f5" />
+          </Border>
+        </StackPanel>
+        <Button Grid.Column="2" x:Name="DoctorButton" Classes="secondary"
+                Content="Doctor" Margin="0,0,8,0" Click="OnDoctor" />
+        <Button Grid.Column="3" x:Name="MountButton" Classes="primary"
+                Content="Mount…" Click="OnMountClicked" />
+      </Grid>
+    </Border>
+
+    <!-- содержимое -->
+    <Grid Grid.Row="1" ColumnDefinitions="*,340">
+
+      <!-- список монтирований -->
+      <Grid Grid.Column="0" RowDefinitions="Auto,*" Margin="18,16,10,16">
+        <TextBlock Grid.Row="0" Classes="kicker" Text="MOUNTS" Margin="0,0,0,10" />
+
+        <Panel Grid.Row="1">
+          <ListBox x:Name="MountsList" Background="Transparent" BorderThickness="0"
+                   SelectionChanged="OnMountSelected">
+            <ListBox.ItemTemplate>
+              <DataTemplate DataType="app:MountEntry">
+                <Border Classes="card" Margin="0,0,0,8">
+                  <Grid ColumnDefinitions="Auto,*,Auto,Auto">
+                    <Ellipse Grid.Column="0" Width="8" Height="8" Fill="#6FBF77"
+                             VerticalAlignment="Center" Margin="0,0,12,0" />
+                    <StackPanel Grid.Column="1" Spacing="2">
+                      <TextBlock Text="{Binding Repository}" Classes="mono" FontSize="14" />
+                      <TextBlock Text="{Binding Path}" Classes="muted" FontSize="11" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="2" Spacing="2" Margin="12,0">
+                      <TextBlock Text="{Binding MountPoint}" Classes="mono" FontSize="14"
+                                 HorizontalAlignment="Right" />
+                      <TextBlock Text="{Binding Views}" Classes="muted" FontSize="11"
+                                 HorizontalAlignment="Right" />
+                    </StackPanel>
+                    <TextBlock Grid.Column="3" Text="{Binding Uptime}" Classes="muted"
+                               VerticalAlignment="Center" Width="60"
+                               TextAlignment="Right" />
+                  </Grid>
+                </Border>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+
+          <!-- пустое состояние: знак, одна фраза, одно действие -->
+          <StackPanel x:Name="EmptyState" Spacing="12" VerticalAlignment="Center"
+                      HorizontalAlignment="Left" Margin="4,0">
+            <TextBlock Text="Nothing is mounted" FontSize="16" Foreground="#cfd3e5" />
+            <TextBlock Classes="muted" MaxWidth="330" TextWrapping="Wrap"
+                       Text="Point gitfs at a repository and its history shows up as a drive you can browse." />
+            <Button Classes="primary" Content="Mount a repository"
+                    HorizontalAlignment="Left" Click="OnMountClicked" />
+          </StackPanel>
+        </Panel>
+      </Grid>
+
+      <!-- панель деталей / doctor -->
+      <Border Grid.Column="1" Background="#1b1d2b" Padding="16">
+        <Grid RowDefinitions="Auto,*,Auto">
+          <TextBlock Grid.Row="0" Classes="kicker" x:Name="SidePanelTitle"
+                     Text="ENVIRONMENT" Margin="0,0,0,12" />
+          <ScrollViewer Grid.Row="1">
+            <StackPanel x:Name="SidePanel" Spacing="8" />
+          </ScrollViewer>
+          <Button Grid.Row="2" x:Name="UnmountButton" Classes="secondary"
+                  Content="Unmount" IsEnabled="False" Margin="0,12,0,0"
+                  HorizontalAlignment="Stretch" Click="OnUnmount" />
+        </Grid>
+      </Border>
+    </Grid>
+
+    <!-- статусная строка -->
+    <Border Grid.Row="2" Background="#13151f" Padding="16,8">
+      <TextBlock x:Name="StatusText" Classes="muted" Text="ready" />
+    </Border>
+  </Grid>
+</Window>

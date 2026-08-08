@@ -1,0 +1,98 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="Gitfs.App.MountDialog"
+        Title="Mount repository" Width="820" Height="560"
+        WindowStartupLocation="CenterOwner">
+
+  <Grid RowDefinitions="*,Auto">
+    <Grid Grid.Row="0" ColumnDefinitions="*,300">
+
+      <!-- слева: выбор -->
+      <StackPanel Grid.Column="0" Margin="20" Spacing="16">
+
+        <StackPanel Spacing="6">
+          <TextBlock Text="Repository" Classes="muted" />
+          <Grid ColumnDefinitions="*,Auto">
+            <TextBox Grid.Column="0" x:Name="RepoBox" Watermark="path to a git repository"
+                     TextChanged="OnRepoChanged" />
+            <Button Grid.Column="1" Classes="secondary" Content="Browse…"
+                    Margin="8,0,0,0" Click="OnBrowse" />
+          </Grid>
+          <TextBlock x:Name="RepoProblem" Classes="muted" Foreground="#E07B6D"
+                     IsVisible="False" TextWrapping="Wrap" />
+        </StackPanel>
+
+        <StackPanel Spacing="6">
+          <TextBlock Text="Mount point" Classes="muted" />
+          <Grid ColumnDefinitions="Auto,*">
+            <ComboBox Grid.Column="0" x:Name="LetterBox" Width="90"
+                      SelectionChanged="OnLetterChanged" />
+            <TextBlock Grid.Column="1" x:Name="LettersHint" Classes="muted"
+                       VerticalAlignment="Center" Margin="12,0,0,0" />
+          </Grid>
+        </StackPanel>
+
+        <StackPanel Spacing="6">
+          <TextBlock Text="Views" Classes="muted" />
+          <Border Background="#232532" CornerRadius="8" Padding="12">
+            <StackPanel Spacing="8">
+              <CheckBox x:Name="ViewBranches" IsChecked="True" IsCheckedChanged="OnViewToggled">
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                  <TextBlock Text="branches" Classes="mono" Width="72" />
+                  <TextBlock Text="every branch as a live working tree" Classes="muted" />
+                </StackPanel>
+              </CheckBox>
+              <CheckBox x:Name="ViewTags" IsChecked="True" IsCheckedChanged="OnViewToggled">
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                  <TextBlock Text="tags" Classes="mono" Width="72" />
+                  <TextBlock Text="released versions, frozen" Classes="muted" />
+                </StackPanel>
+              </CheckBox>
+              <CheckBox x:Name="ViewCommits" IsChecked="True" IsCheckedChanged="OnViewToggled">
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                  <TextBlock Text="commits" Classes="mono" Width="72" />
+                  <TextBlock Text="the last 200 commits by sha" Classes="muted" />
+                </StackPanel>
+              </CheckBox>
+              <CheckBox x:Name="ViewDates" IsChecked="True" IsCheckedChanged="OnViewToggled">
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                  <TextBlock Text="dates" Classes="mono" Width="72" />
+                  <TextBlock Text="the same commits, filed by day" Classes="muted" />
+                </StackPanel>
+              </CheckBox>
+              <CheckBox x:Name="ViewHistory" IsChecked="True" IsCheckedChanged="OnViewToggled">
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                  <TextBlock Text="history" Classes="mono" Width="72" Foreground="#d2cefd" />
+                  <TextBlock Text="each file opens as a folder of its versions"
+                             Classes="muted" Foreground="#b5abfc" />
+                </StackPanel>
+              </CheckBox>
+            </StackPanel>
+          </Border>
+        </StackPanel>
+      </StackPanel>
+
+      <!-- справа: живое превью дерева -->
+      <Border Grid.Column="1" Background="#1b1d2b" Padding="16">
+        <StackPanel Spacing="10">
+          <TextBlock Classes="kicker" Text="YOU WILL GET" />
+          <StackPanel x:Name="TreePreview" Spacing="3" />
+          <TextBlock Classes="muted" TextWrapping="Wrap" Margin="0,8,0,0"
+                     Text="Unchecked views are struck through rather than hidden, so the choice stays visually reversible." />
+        </StackPanel>
+      </Border>
+    </Grid>
+
+    <!-- футер -->
+    <Border Grid.Row="1" Background="#13151f" Padding="16,12">
+      <Grid ColumnDefinitions="*,Auto,Auto">
+        <TextBlock Grid.Column="0" x:Name="FooterFlags" Classes="muted"
+                   VerticalAlignment="Center" Text="read-only · overlay kept" />
+        <Button Grid.Column="1" Classes="secondary" Content="Cancel"
+                Margin="0,0,8,0" Click="OnCancel" />
+        <Button Grid.Column="2" x:Name="MountAction" Classes="primary"
+                Content="Mount" Click="OnMount" />
+      </Grid>
+    </Border>
+  </Grid>
+</Window>
