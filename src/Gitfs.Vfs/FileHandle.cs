@@ -18,11 +18,15 @@ public sealed class FileHandle : IDisposable
     private long _position;
 
     public NodeInfo Info { get; }
+    /// <summary>Виртуальный путь узла — адаптеру он нужен, чтобы перечислить
+    /// директорию по уже открытому хендлу.</summary>
+    public string Path { get; }
     public bool IsDirectory => Info.Kind == NodeKind.Directory;
 
-    internal FileHandle(SnapshotLease lease, in NodeInfo info, in ObjectId blobId)
+    internal FileHandle(SnapshotLease lease, string path, in NodeInfo info, in ObjectId blobId)
     {
         _lease = lease;
+        Path = path;
         Info = info;
         _blobId = blobId;
     }

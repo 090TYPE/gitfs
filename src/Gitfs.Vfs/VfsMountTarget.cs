@@ -64,7 +64,7 @@ public sealed class VfsMountTarget : IMountTarget
                 }
                 // аренда переходит во владение хендла и живёт до Close
                 return GitfsResult<FileHandle>.Ok(
-                    new FileHandle(lease, node.Value, node.Value.BlobId));
+                    new FileHandle(lease, path, node.Value, node.Value.BlobId));
             }
             catch
             {

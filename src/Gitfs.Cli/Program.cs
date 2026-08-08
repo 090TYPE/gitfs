@@ -2,6 +2,7 @@ using Gitfs.Cli;
 using Gitfs.Core;
 using Gitfs.Vfs;
 using Gitfs.Vfs.Views;
+using Gitfs.Mount.WinFsp;
 
 if (args.Length == 0 || args[0] is "-h" or "--help" or "help")
 {
@@ -101,16 +102,50 @@ static int List()
 
 static int Mount(string[] rest)
 {
-    var checks = Diagnostics.Run(rest.Length > 0 ? Path.GetFullPath(rest[0]) : null);
+    if (rest.Length < 2)
+    {
+        Console.Error.WriteLine("fail gitfs mount needs a repository and a mount point");
+        Console.Error.WriteLine(@"     → for example: gitfs mount C:\src\gitfs G:");
+        return 1;
+    }
+    var repoPath = Path.GetFullPath(rest[0]);
+    var mountPoint = rest[1];
+
+    var checks = Diagnostics.Run(repoPath);
     var blockers = checks.Where(c => c.Status == CheckStatus.Fail).ToList();
     if (blockers.Count > 0)
     {
         Console.Error.Write(Report.Render(blockers));
         return 1;
     }
-    Console.Error.WriteLine("fail the filesystem adapter is not implemented yet (milestone M3)");
-    Console.Error.WriteLine("     → meanwhile, walk the same tree with: gitfs tree <repo> [<path>]");
-    return 1;
+
+    var gitDir = Diagnostics.ResolveGitDir(repoPath)!;
+    var manager = new SnapshotManager(gitDir);
+    var tree = new VirtualTree(new IView[] { new BranchesView(NamePolicy.For(NamePolicyKind.Native)) });
+    var name = new DirectoryInfo(repoPath).Name;
+    var target = new VfsMountTarget(manager, tree, name);
+
+    var started = DateTime.UtcNow;
+    try
+    {
+        using var mount = GitfsMount.Mount(target, mountPoint,
+            line => Console.Error.WriteLine($"     {line}"));
+        var elapsed = (DateTime.UtcNow - started).TotalSeconds;
+        Console.WriteLine($"mounted {mountPoint} · {name} · 1 view · {elapsed:0.0}s");
+        Console.WriteLine("press Ctrl+C to unmount");
+
+        using var stop = new ManualResetEventSlim();
+        Console.CancelKeyPress += (_, e) => { e.Cancel = true; stop.Set(); };
+        stop.Wait();
+        Console.WriteLine($"unmounting {mountPoint}");
+        return 0;
+    }
+    catch (MountException e)
+    {
+        Console.Error.WriteLine($"fail {e.Message}");
+        Console.Error.WriteLine($"     → install it from {Diagnostics.WinFspDownload} and run gitfs doctor again");
+        return 1;
+    }
 }
 
 static int Unmount()

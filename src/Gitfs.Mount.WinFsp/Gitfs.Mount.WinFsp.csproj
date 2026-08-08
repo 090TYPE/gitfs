@@ -11,6 +11,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- таблица NTSTATUS проверяется без драйвера -->
+    <InternalsVisibleTo Include="Gitfs.Mount.WinFsp.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Gitfs.Core\Gitfs.Core.csproj" />
     <ProjectReference Include="..\Gitfs.Vfs\Gitfs.Vfs.csproj" />
   </ItemGroup>

@@ -211,7 +211,7 @@ public class MountTargetTests
     }
 
     [Fact]
-    public void Parallel_operations_stay_correct_under_epoch_churn()
+    public async Task Parallel_operations_stay_correct_under_epoch_churn()
     {
         using var repo = BuildRepo();
         var (target, manager) = Open(repo);
@@ -237,6 +237,6 @@ public class MountTargetTests
             }
         });
         stop.Cancel();
-        churn.Wait();
+        await churn;
     }
 }
