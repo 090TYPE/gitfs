@@ -28,6 +28,11 @@ public interface IMountTarget : IDisposable
     GitfsResult<FileHandle> Open(string path, OpenMode mode);
     GitfsResult<int> Read(FileHandle handle, long offset, Span<byte> buffer);
     GitfsResult<int> Write(FileHandle handle, long offset, ReadOnlySpan<byte> data);
+    /// <summary>Усечение/расширение: перезапись файла обязана отбросить хвост
+    /// прежнего содержимого.</summary>
+    GitfsResult<Unit> SetLength(FileHandle handle, long length);
+    /// <summary>Скрывает узел надгробием песочницы; репозиторий не меняется.</summary>
+    GitfsResult<Unit> Delete(string path);
     GitfsResult<Unit> Close(FileHandle handle);
     VolumeInfo GetVolumeInfo();
 }

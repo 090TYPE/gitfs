@@ -91,6 +91,11 @@ public sealed class GitfsFileSystem : FileSystemBase
 
     // ---------- открытие и чтение ----------
 
+    private const uint FileWriteData = 0x0002;
+    private const uint FileAppendData = 0x0004;
+    private const uint GenericWrite = 0x40000000;
+    private const uint Delete = 0x00010000;
+
     public override int Open(string fileName, uint createOptions, uint grantedAccess,
         out object? fileNode, out object? fileDesc, out FspFileInfo fileInfo,
         out string? normalizedName)
@@ -102,8 +107,13 @@ public sealed class GitfsFileSystem : FileSystemBase
         try
         {
             var path = Normalize(fileName);
-            var opened = _target.Open(path, OpenMode.Read);
-            if (!opened.TryGet(out var handle)) return Translate(opened.Error);
+            // приложения (Word, Excel, IDE) просят запись даже для просмотра —
+            // отдаём им overlay-хендл, а не отказ (спека §10)
+            var wantsWrite = (grantedAccess & (FileWriteData | FileAppendData | GenericWrite)) != 0;
+            var opened = _target.Open(path, wantsWrite ? OpenMode.Write : OpenMode.Read);
+            if (!opened.TryGet(out var handle) && wantsWrite)
+                opened = _target.Open(path, OpenMode.Read); // том смонтирован read-only
+            if (!opened.TryGet(out handle)) return Translate(opened.Error);
             fileDesc = handle;
             fileInfo = ToFspInfo(handle.Info);
             return STATUS_SUCCESS;
@@ -111,6 +121,77 @@ public sealed class GitfsFileSystem : FileSystemBase
         catch (Exception e)
         {
             return Fail("Open", e);
+        }
+    }
+
+    public override int Write(object fileNode, object fileDesc, IntPtr buffer, ulong offset,
+        uint length, bool writeToEndOfFile, bool constrainedIo,
+        out uint bytesTransferred, out FspFileInfo fileInfo)
+    {
+        bytesTransferred = 0;
+        fileInfo = default;
+        try
+        {
+            if (fileDesc is not FileHandle handle) return STATUS_INVALID_PARAMETER;
+            var target = writeToEndOfFile ? (ulong)handle.Info.Size : offset;
+            var data = new byte[length];
+            Marshal.Copy(buffer, data, 0, (int)length);
+            var written = _target.Write(handle, (long)target, data);
+            if (!written.TryGet(out var count)) return Translate(written.Error);
+            bytesTransferred = (uint)count;
+            fileInfo = ToFspInfo(handle.Info);
+            return STATUS_SUCCESS;
+        }
+        catch (Exception e)
+        {
+            return Fail("Write", e);
+        }
+    }
+
+    public override int SetFileSize(object fileNode, object fileDesc, ulong newSize,
+        bool setAllocationSize, out FspFileInfo fileInfo)
+    {
+        fileInfo = default;
+        try
+        {
+            if (fileDesc is not FileHandle handle) return STATUS_INVALID_PARAMETER;
+            if (setAllocationSize) { fileInfo = ToFspInfo(handle.Info); return STATUS_SUCCESS; }
+            var result = _target.SetLength(handle, (long)newSize);
+            if (!result.IsOk) return Translate(result.Error);
+            fileInfo = ToFspInfo(handle.Info);
+            return STATUS_SUCCESS;
+        }
+        catch (Exception e)
+        {
+            return Fail("SetFileSize", e);
+        }
+    }
+
+    public override int CanDelete(object fileNode, object fileDesc, string fileName)
+    {
+        try
+        {
+            // проверка возможности: настоящее скрытие делает Cleanup
+            var lookup = _target.Lookup(Normalize(fileName));
+            return lookup.IsOk ? STATUS_SUCCESS : Translate(lookup.Error);
+        }
+        catch (Exception e)
+        {
+            return Fail("CanDelete", e);
+        }
+    }
+
+    public override void Cleanup(object fileNode, object fileDesc, string fileName, uint flags)
+    {
+        try
+        {
+            if ((flags & CleanupDelete) == 0) return;
+            var result = _target.Delete(Normalize(fileName));
+            if (!result.IsOk) _log($"Delete refused for {fileName}: {result.Error}");
+        }
+        catch (Exception e)
+        {
+            _log($"Cleanup failed: {e.GetType().Name}: {e.Message}");
         }
     }
 

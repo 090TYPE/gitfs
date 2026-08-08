@@ -3,6 +3,7 @@ using Gitfs.Core;
 using Gitfs.Vfs;
 using Gitfs.Vfs.Views;
 using Gitfs.Mount.WinFsp;
+using Gitfs.Vfs.Overlay;
 
 if (args.Length == 0 || args[0] is "-h" or "--help" or "help")
 {
@@ -110,7 +111,14 @@ static int Tree(string[] rest)
 static int List()
 {
     Console.WriteLine("REPOSITORY        MOUNT  VIEWS              UPTIME");
-    Console.WriteLine("(no mounts — the filesystem adapter lands in M3)");
+    Console.WriteLine("(no mounts in this process)");
+    var orphans = OverlayStore.FindOrphans();
+    if (orphans.Count > 0)
+    {
+        Console.WriteLine();
+        Console.WriteLine($"{orphans.Count} orphaned overlay(s) from earlier runs:");
+        foreach (var dir in orphans) Console.WriteLine($"  {dir}");
+    }
     return 0;
 }
 
@@ -137,7 +145,10 @@ static int Mount(string[] rest)
     var manager = new SnapshotManager(gitDir);
     var tree = BuildTree();
     var name = new DirectoryInfo(repoPath).Name;
-    var target = new VfsMountTarget(manager, tree, name);
+    // overlay включён: без него Word и Excel не откроют файл из старого
+    // коммита — они пишут lock-файлы рядом с открываемым (спека §10)
+    var overlay = OverlayStore.Create();
+    var target = new VfsMountTarget(manager, tree, name, readOnly: false, overlay: overlay);
 
     var started = DateTime.UtcNow;
     try
@@ -145,7 +156,7 @@ static int Mount(string[] rest)
         using var mount = GitfsMount.Mount(target, mountPoint,
             line => Console.Error.WriteLine($"     {line}"));
         var elapsed = (DateTime.UtcNow - started).TotalSeconds;
-        Console.WriteLine($"mounted {mountPoint} · {name} · 1 view · {elapsed:0.0}s");
+        Console.WriteLine($"mounted {mountPoint} · {name} · 5 views · {elapsed:0.0}s");
         Console.WriteLine("press Ctrl+C to unmount");
 
         using var stop = new ManualResetEventSlim();
