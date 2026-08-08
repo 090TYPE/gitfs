@@ -1,7 +1,12 @@
 ﻿# Acceptance for a live gitfs volume (milestones M3/M5).
 #   powershell -ExecutionPolicy Bypass -File tools\acceptance.ps1 G:
 # Every check returns $null on success or a message describing the failure.
-param([string]$Drive = "G:", [string]$Repo = "C:\Users\090\Documents\GitHub\gitfs")
+# Репозиторий по умолчанию — тот, в котором лежит этот скрипт, а не путь на
+# машине автора: иначе у всех остальных набор падает на первом же шаге.
+param(
+    [string]$Drive = "G:",
+    [string]$Repo = (Split-Path -Parent $PSScriptRoot)
+)
 
 $ErrorActionPreference = "Stop"
 $script:pass = 0
