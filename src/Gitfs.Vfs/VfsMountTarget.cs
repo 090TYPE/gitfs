@@ -268,7 +268,15 @@ public sealed class VfsMountTarget : IMountTarget
     public VolumeInfo GetVolumeInfo() =>
         new($"gitfs: {_repositoryName}", _capacity + (_overlay?.TotalBytes ?? 0), 0);
 
-    public void Dispose() => _overlay?.Dispose();
+    /// <summary>Цель владеет и менеджером снапшотов, и песочницей: каждый
+    /// вызывающий создаёт их ровно для неё и больше к ним не обращается.
+    /// Раньше освобождалась только песочница, и файлы пакетов оставались
+    /// открытыми до конца жизни процесса.</summary>
+    public void Dispose()
+    {
+        _snapshots.Dispose();
+        _overlay?.Dispose();
+    }
 
     // ---------- внутренности ----------
 

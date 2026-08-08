@@ -103,10 +103,16 @@ public readonly struct SnapshotLease : IDisposable
 /// <summary>Держатель текущего снапшота. Смена эпохи: mtime-подпись
 /// (HEAD, packed-refs, refs/ рекурсивно), проверка не чаще раза в секунду,
 /// публикация — одна волатильная запись ссылки.
-/// Долг (план M2): вытесненные снапшоты не диспозятся — читатели могут
-/// держать ссылку; refcount придёт с адаптером M3, mmap-хендлы пока
-/// освобождает GC.</summary>
-public sealed class SnapshotManager
+///
+/// Освобождать обязательно. Пока жив снапшот, ObjectReader держит открытыми
+/// файлы пакетов: процесс, который смонтировал и размонтировал том, но не
+/// освободил менеджер, продолжает держать репозиторий занятым. Для утилиты
+/// это незаметно — она тут же завершается; для приложения, живущего в трее,
+/// это значит, что после размонтирования в репозитории нельзя ни выполнить
+/// git gc, ни переместить его, ни удалить. Найдено нагрузочным тестом
+/// (§17, уровень 4): попытка удалить каталог после Dispose падала на
+/// «pack-….pack используется другим процессом».</summary>
+public sealed class SnapshotManager : IDisposable
 {
     private readonly object _gate = new();
     private readonly string _gitDir;
@@ -115,6 +121,7 @@ public sealed class SnapshotManager
     private RepoSnapshot _current;
     private string _signature;
     private long _lastCheckTicks;
+    private bool _disposed;
 
     public SnapshotManager(string gitDir, TimeSpan? throttle = null)
     {
@@ -166,6 +173,21 @@ public sealed class SnapshotManager
             if (snapshot.TryAddRef()) return new SnapshotLease(snapshot);
             // проиграли гонку с подменой — берём уже опубликованный новый
         }
+    }
+
+    /// <summary>Снимает ссылку менеджера с текущего снапшота. Аренды,
+    /// выданные операциям, додержат снапшот сами — файлы закроются, когда
+    /// последний читатель отпустит его, а не раньше.</summary>
+    public void Dispose()
+    {
+        RepoSnapshot? last;
+        lock (_gate)
+        {
+            if (_disposed) return;
+            _disposed = true;
+            last = _current;
+        }
+        last?.Release();
     }
 
     /// <summary>Подпись эпохи — СОСТАВ файлов ссылок с их mtime, не max
