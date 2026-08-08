@@ -1,0 +1,23 @@
+# Переносы строк в проекте, который живёт на трёх платформах.
+#
+# Без этого файла git на Windows выдаёт .sh с CRLF, и на Linux они не
+# запускаются вовсе: строка «#!/usr/bin/env bash\r» ищет интерпретатор
+# с возвратом каретки в имени.
+
+* text=auto
+
+# всегда LF — их читают Linux и docker
+*.sh        text eol=lf
+*.c         text eol=lf
+Dockerfile* text eol=lf
+
+# всегда CRLF — их читает powershell.exe, а он на 5.1 спотыкается о LF
+*.ps1       text eol=crlf
+
+# двоичное — не трогать
+*.ico       binary
+*.png       binary
+*.pdf       binary
+
+# фикстура ABI снимается компилятором на Linux и сверяется побайтно
+tests/Gitfs.Mount.Fuse.Tests/fixtures/fuse-abi.txt text eol=lf
