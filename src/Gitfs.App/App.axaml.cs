@@ -17,8 +17,17 @@ public partial class App : Application
         {
             _main = new MainWindow();
             desktop.MainWindow = _main;
-            // окно закрывается в трей, программа продолжает держать тома
-            desktop.ShutdownMode = ShutdownMode.OnExplicitShutdown;
+
+            // Прятаться в трей можно только если трей существует. На Linux
+            // без DBus-хоста иконки нет, и «спрятать окно» означало бы
+            // приложение, которое нечем закрыть (находка ревью).
+            var tray = TrayIcon.GetIcons(this);
+            var hasTray = tray is { Count: > 0 } && OperatingSystem.IsWindows();
+            _main.HasTray = hasTray;
+            desktop.ShutdownMode = hasTray
+                ? ShutdownMode.OnExplicitShutdown
+                : ShutdownMode.OnMainWindowClose;
+
             desktop.ShutdownRequested += (_, _) => MountService.Instance.UnmountAll();
             _main.MountsChanged += UpdateTrayTooltip;
             UpdateTrayTooltip();

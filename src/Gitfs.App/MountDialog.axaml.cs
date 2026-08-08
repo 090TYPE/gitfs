@@ -12,18 +12,46 @@ public sealed record MountRequest(string RepositoryPath, string MountPoint,
 
 public partial class MountDialog : Window
 {
+    /// <summary>Точка монтирования буквой доступна только на Windows;
+    /// иначе это папка. Раньше пустой список букв давал диалог с навсегда
+    /// серой кнопкой и без объяснений (находка ревью).</summary>
+    private readonly bool _usesDriveLetters = OperatingSystem.IsWindows();
+
     public MountDialog()
     {
         InitializeComponent();
-        var letters = MountService.FreeDriveLetters();
-        LetterBox.ItemsSource = letters.Select(c => c + ":").ToList();
-        if (letters.Count > 0) LetterBox.SelectedIndex = 0;
-        LettersHint.Text = letters.Count > 0
-            ? "free: " + string.Join(' ', letters.Take(6))
-            : "no free drive letters";
-        RepoBox.Text = Directory.GetCurrentDirectory();
+        try
+        {
+            var letters = _usesDriveLetters ? MountService.FreeDriveLetters() : [];
+            LetterBox.ItemsSource = letters.Select(c => c + ":").ToList();
+            if (letters.Count > 0) LetterBox.SelectedIndex = 0;
+            LetterBox.IsVisible = _usesDriveLetters && letters.Count > 0;
+            FolderBox.IsVisible = !LetterBox.IsVisible;
+
+            LettersHint.Text = LetterBox.IsVisible
+                ? "free: " + string.Join(' ', letters.Take(6))
+                : _usesDriveLetters
+                    ? "every drive letter is taken — free one, or mount into a folder"
+                    : "on this platform a mount point is a folder";
+            if (!LetterBox.IsVisible)
+                FolderBox.Text = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                    "mnt", "gitfs");
+        }
+        catch (Exception e)
+        {
+            Program.Log("mount-dialog-init", e);
+            LettersHint.Text = "could not enumerate drives: " + e.Message;
+        }
+
+        try { RepoBox.Text = Directory.GetCurrentDirectory(); }
+        catch (Exception) { RepoBox.Text = ""; } // текущий каталог мог исчезнуть
         UpdatePreview();
     }
+
+    private string? MountPoint => LetterBox.IsVisible
+        ? LetterBox.SelectedItem as string
+        : string.IsNullOrWhiteSpace(FolderBox.Text) ? null : FolderBox.Text;
 
 
     private List<string> SelectedViews()
@@ -42,7 +70,7 @@ public partial class MountDialog : Window
     private void UpdatePreview()
     {
         TreePreview.Children.Clear();
-        var mount = LetterBox.SelectedItem as string ?? "G:";
+        var mount = MountPoint ?? "G:";
         var selected = SelectedViews();
 
         void Line(string text, int indent, bool enabled, bool accent = false)
@@ -75,8 +103,8 @@ public partial class MountDialog : Window
                      && MountService.ResolveGitDir(RepoBox.Text!) is not null;
         RepoProblem.IsVisible = !repoOk && !string.IsNullOrWhiteSpace(RepoBox.Text);
         RepoProblem.Text = "No .git directory here. Pick the repository root.";
-        MountAction.IsEnabled = repoOk && selected.Count > 0 && LetterBox.SelectedItem is not null;
-        MountAction.Content = LetterBox.SelectedItem is string letter ? $"Mount to {letter}" : "Mount";
+        MountAction.IsEnabled = repoOk && selected.Count > 0 && MountPoint is not null;
+        MountAction.Content = MountPoint is { } point ? $"Mount to {point}" : "Mount";
         FooterFlags.Text = $"{selected.Count} view{(selected.Count == 1 ? "" : "s")} · writes go to a sandbox";
     }
 
@@ -84,17 +112,37 @@ public partial class MountDialog : Window
     private void OnLetterChanged(object? sender, SelectionChangedEventArgs e) => UpdatePreview();
     private void OnRepoChanged(object? sender, TextChangedEventArgs e) => UpdatePreview();
 
-    private async void OnBrowse(object? sender, RoutedEventArgs e)
+    private void OnFolderChanged(object? sender, TextChangedEventArgs e) => UpdatePreview();
+
+    private void OnBrowse(object? sender, RoutedEventArgs e) => _ = BrowseAsync();
+
+    /// <summary>Диалог выбора папки может отсутствовать (Linux без портала)
+    /// или бросить COM-исключение: раньше это роняло процесс (находка ревью).</summary>
+    private async Task BrowseAsync()
     {
-        var folders = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+        try
         {
-            Title = "Pick a git repository",
-            AllowMultiple = false,
-        });
-        if (folders.Count > 0)
-        {
-            RepoBox.Text = folders[0].Path.LocalPath;
+            var folders = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+            {
+                Title = "Pick a git repository",
+                AllowMultiple = false,
+            });
+            if (folders.Count == 0) return;
+            var path = folders[0].TryGetLocalPath();
+            if (path is null)
+            {
+                RepoProblem.IsVisible = true;
+                RepoProblem.Text = "That location is not a local folder.";
+                return;
+            }
+            RepoBox.Text = path;
             UpdatePreview();
+        }
+        catch (Exception ex)
+        {
+            Program.Log("browse", ex);
+            RepoProblem.IsVisible = true;
+            RepoProblem.Text = "Folder picker unavailable — type the path instead.";
         }
     }
 
@@ -103,7 +151,7 @@ public partial class MountDialog : Window
     private void OnMount(object? sender, RoutedEventArgs e)
     {
         var views = SelectedViews();
-        if (views.Count == 0 || LetterBox.SelectedItem is not string mountPoint) return;
+        if (views.Count == 0 || MountPoint is not { } mountPoint) return;
         Close(new MountRequest(RepoBox.Text!, mountPoint, views));
     }
 }

@@ -27,8 +27,11 @@
           <Grid ColumnDefinitions="Auto,*">
             <ComboBox Grid.Column="0" x:Name="LetterBox" Width="90"
                       SelectionChanged="OnLetterChanged" />
+            <TextBox Grid.Column="0" x:Name="FolderBox" Width="240" IsVisible="False"
+                     Watermark="folder to mount into" TextChanged="OnFolderChanged" />
             <TextBlock Grid.Column="1" x:Name="LettersHint" Classes="muted"
-                       VerticalAlignment="Center" Margin="12,0,0,0" />
+                       VerticalAlignment="Center" Margin="12,0,0,0"
+                       TextWrapping="Wrap" />
           </Grid>
         </StackPanel>
 

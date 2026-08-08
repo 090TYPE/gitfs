@@ -30,10 +30,16 @@ public sealed class MountService
 {
     public static MountService Instance { get; } = new();
 
+    // Mount/Unmount выполняются в фоновом потоке, Entries читается из UI —
+    // список обязан быть под замком (находка ревью).
+    private readonly object _gate = new();
     private readonly List<MountEntry> _entries = new();
     private readonly Dictionary<string, IDisposable> _live = new(StringComparer.OrdinalIgnoreCase);
 
-    public IReadOnlyList<MountEntry> Entries => _entries;
+    public IReadOnlyList<MountEntry> Entries
+    {
+        get { lock (_gate) return _entries.ToList(); }
+    }
 
 #if GITFS_WINFSP
     public bool CanMount => OperatingSystem.IsWindows();
@@ -73,8 +79,13 @@ public sealed class MountService
     public MountEntry Mount(string repoPath, string mountPoint, IReadOnlyCollection<string> views)
     {
         if (!CanMount) throw new InvalidOperationException(MountBlockedReason!);
-        var gitDir = ResolveGitDir(repoPath)
+        var gitDir = Doctor.ResolveGitDir(repoPath)
             ?? throw new InvalidOperationException($"no .git directory in {repoPath}");
+        lock (_gate)
+        {
+            if (_live.ContainsKey(mountPoint))
+                throw new InvalidOperationException($"{mountPoint} is already mounted by gitfs");
+        }
 
 #if GITFS_WINFSP
         var manager = new SnapshotManager(gitDir);
@@ -82,26 +93,40 @@ public sealed class MountService
         var target = new VfsMountTarget(manager, BuildTree(views),
             new DirectoryInfo(repoPath).Name, readOnly: false, overlay: overlay);
         var mount = GitfsMount.Mount(target, mountPoint, readOnly: false);
-        _live[mountPoint] = mount;
+        lock (_gate) _live[mountPoint] = mount;
 #endif
         var entry = new MountEntry(new DirectoryInfo(repoPath).Name, repoPath, mountPoint,
             string.Join(' ', new[] { "branches", "tags", "commits", "dates", "history" }
                 .Select(v => views.Contains(v) ? v[0].ToString() : "·")),
             DateTimeOffset.UtcNow);
-        _entries.Add(entry);
+        lock (_gate) _entries.Add(entry);
         return entry;
     }
 
     public void Unmount(MountEntry entry)
     {
-        if (_live.Remove(entry.MountPoint, out var mount)) mount.Dispose();
-        _entries.Remove(entry);
+        IDisposable? mount;
+        lock (_gate)
+        {
+            _live.Remove(entry.MountPoint, out mount);
+            _entries.Remove(entry);
+        }
+        mount?.Dispose(); // снимаем том вне замка: teardown может быть долгим
     }
 
     public void UnmountAll()
     {
-        foreach (var mount in _live.Values) mount.Dispose();
-        _live.Clear();
-        _entries.Clear();
+        List<IDisposable> mounts;
+        lock (_gate)
+        {
+            mounts = _live.Values.ToList();
+            _live.Clear();
+            _entries.Clear();
+        }
+        foreach (var mount in mounts)
+        {
+            try { mount.Dispose(); }
+            catch (Exception e) { Program.Log("unmount-all", e); }
+        }
     }
 }

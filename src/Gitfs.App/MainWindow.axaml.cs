@@ -1,27 +1,47 @@
+using System.Collections.ObjectModel;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
-
 using Avalonia.Media;
+using Avalonia.Threading;
 using Gitfs.Diagnostics;
 
 namespace Gitfs.App;
 
 public partial class MainWindow : Window
 {
-    private readonly List<MountEntry> _mounts = new();
+    private enum SidePanelMode { Environment, Mount }
+
+    /// <summary>Коллекция живёт одна: пересоздание ItemsSource сбрасывало
+    /// выделение, и после монтирования детали нового тома не показывались.</summary>
+    private readonly ObservableCollection<MountEntry> _mounts = new();
+    private readonly DispatcherTimer _uptimeTimer;
+
+    private SidePanelMode _panelMode = SidePanelMode.Environment;
+    private CancellationTokenSource? _diagnosticsCts;
 
     /// <summary>Трей показывает состояние монтирований без открытия окна.</summary>
     public event Action? MountsChanged;
 
-    /// <summary>Точка входа из меню трея.</summary>
-    public void OpenMountDialog() => OnMountClicked(this, new RoutedEventArgs());
+    /// <summary>Есть ли куда прятаться при закрытии окна. На Linux без
+    /// DBus-хоста иконки трея нет вовсе, и «спрятать окно» означало бы
+    /// приложение, которое невозможно закрыть (находка ревью).</summary>
+    public bool HasTray { get; set; }
+
+    public void OpenMountDialog() => _ = MountAsync();
 
     public MainWindow()
     {
         InitializeComponent();
-        // окно прячется в трей, тома продолжают жить
-        Closing += (_, e) => { e.Cancel = true; Hide(); };
+        MountsList.ItemsSource = _mounts;
+
+        Closing += (_, e) =>
+        {
+            if (!HasTray) return;   // без трея закрытие означает выход
+            e.Cancel = true;
+            Hide();
+        };
+
         PlatformBadge.Text = OperatingSystem.IsWindows() ? "windows"
             : OperatingSystem.IsMacOS() ? "macos" : "linux";
         if (!MountService.Instance.CanMount)
@@ -29,50 +49,65 @@ public partial class MainWindow : Window
             MountButton.IsEnabled = false;
             StatusText.Text = MountService.Instance.MountBlockedReason;
         }
+
+        // время работы тикает: в макете это живая колонка
+        _uptimeTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(30) };
+        _uptimeTimer.Tick += (_, _) => RefreshUptime();
+        _uptimeTimer.Start();
+
         RefreshMounts();
         ShowEnvironment();
     }
 
-
     private void RefreshMounts()
     {
-        MountsList.ItemsSource = null;
-        MountsList.ItemsSource = _mounts.ToList();
         EmptyState.IsVisible = _mounts.Count == 0;
         MountsList.IsVisible = _mounts.Count > 0;
         UnmountButton.IsEnabled = MountsList.SelectedItem is MountEntry;
         MountsChanged?.Invoke();
     }
 
+    private void RefreshUptime()
+    {
+        if (_mounts.Count == 0) return;
+        var selected = MountsList.SelectedItem;
+        var snapshot = _mounts.ToList();
+        _mounts.Clear();
+        foreach (var entry in snapshot) _mounts.Add(entry);
+        MountsList.SelectedItem = selected;
+        if (_panelMode == SidePanelMode.Mount && selected is MountEntry live)
+            ShowMountDetails(live);
+    }
+
     // ---------- боковая панель ----------
 
-    private bool _diagnosing;
-
-    /// <summary>Диагностика запускает внешние процессы и обходит каталоги,
-    /// поэтому выполняется в фоне: в UI-потоке она замораживала окно.</summary>
     private async void ShowEnvironment()
     {
-        if (_diagnosing) return;
-        _diagnosing = true;
-        DoctorButton.IsEnabled = false;
-        SidePanelTitle.Text = "ENVIRONMENT";
-        SidePanel.Children.Clear();
-        SidePanel.Children.Add(new TextBlock
-        {
-            Text = "checking…",
-            Foreground = new SolidColorBrush(Color.Parse("#9397ab")),
-            FontSize = 12,
-        });
-
         try
         {
-            var checks = await Task.Run(() => MountService.Diagnose(null));
-            if (SidePanelTitle.Text != "ENVIRONMENT") return; // пользователь ушёл в детали
+            _panelMode = SidePanelMode.Environment;
+            _diagnosticsCts?.Cancel();
+            var cts = new CancellationTokenSource();
+            _diagnosticsCts = cts;
+
+            DoctorButton.IsEnabled = false;
+            SidePanelTitle.Text = "ENVIRONMENT";
+            SidePanel.Children.Clear();
+            SidePanel.Children.Add(Muted("checking…"));
+
+            var checks = await Task.Run(() => MountService.Diagnose(null), cts.Token);
+            if (cts.IsCancellationRequested || _panelMode != SidePanelMode.Environment) return;
+
             SidePanel.Children.Clear();
             foreach (var check in checks) SidePanel.Children.Add(RenderCheck(check));
         }
+        catch (OperationCanceledException)
+        {
+            // панель переключили — это нормальный ход, не ошибка
+        }
         catch (Exception ex)
         {
+            Program.Log("diagnostics", ex);
             SidePanel.Children.Clear();
             SidePanel.Children.Add(new TextBlock
             {
@@ -84,10 +119,16 @@ public partial class MainWindow : Window
         }
         finally
         {
-            _diagnosing = false;
             DoctorButton.IsEnabled = true;
         }
     }
+
+    private static TextBlock Muted(string text) => new()
+    {
+        Text = text,
+        Foreground = new SolidColorBrush(Color.Parse("#9397ab")),
+        FontSize = 12,
+    };
 
     private static Control RenderCheck(Check check)
     {
@@ -148,6 +189,8 @@ public partial class MainWindow : Window
 
     private void ShowMountDetails(MountEntry entry)
     {
+        _panelMode = SidePanelMode.Mount;
+        _diagnosticsCts?.Cancel();
         SidePanelTitle.Text = "MOUNT";
         SidePanel.Children.Clear();
 
@@ -200,9 +243,9 @@ public partial class MainWindow : Window
                 UseShellExecute = true,
             });
         }
-        catch (Exception)
+        catch (Exception e)
         {
-            // файловый менеджер может отсутствовать — не повод падать
+            Program.Log("open-file-manager", e);
         }
     }
 
@@ -218,31 +261,38 @@ public partial class MainWindow : Window
         else
         {
             UnmountButton.IsEnabled = false;
-            ShowEnvironment();
+            if (_panelMode == SidePanelMode.Mount) ShowEnvironment();
         }
     }
 
-    private async void OnMountClicked(object? sender, RoutedEventArgs e)
-    {
-        var dialog = new MountDialog();
-        var result = await dialog.ShowDialog<MountRequest?>(this);
-        if (result is null) return;
+    private void OnMountClicked(object? sender, RoutedEventArgs e) => _ = MountAsync();
 
-        MountButton.IsEnabled = false;
-        StatusText.Text = $"mounting {result.MountPoint} …";
+    /// <summary>Весь путь под защитой: конструктор диалога тоже умеет
+    /// бросать (перечисление дисков падает на отключённом сетевом),
+    /// а необработанное исключение отсюда роняло процесс (находка ревью).</summary>
+    private async Task MountAsync()
+    {
         try
         {
-            // монтирование открывает пакеты и поднимает драйвер — не в UI-потоке
+            var dialog = new MountDialog();
+            var result = await dialog.ShowDialog<MountRequest?>(this);
+            if (result is null) return;
+
+            MountButton.IsEnabled = false;
+            StatusText.Text = $"mounting {result.MountPoint} …";
             var entry = await Task.Run(() => MountService.Instance.Mount(
                 result.RepositoryPath, result.MountPoint, result.Views));
+
             _mounts.Add(entry);
             RefreshMounts();
+            MountsList.SelectedItem = entry;   // сразу показываем детали нового тома
             StatusText.Text = $"mounted {entry.MountPoint} · {entry.Repository} · " +
                               $"{result.Views.Count} view{(result.Views.Count == 1 ? "" : "s")}";
             OpenInFileManager(entry.MountPoint);
         }
         catch (Exception ex)
         {
+            Program.Log("mount", ex);
             StatusText.Text = "fail " + (ex.InnerException?.Message ?? ex.Message);
         }
         finally
@@ -251,21 +301,36 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void OnUnmount(object? sender, RoutedEventArgs e)
+    private void OnUnmount(object? sender, RoutedEventArgs e) => _ = UnmountAsync();
+
+    private async Task UnmountAsync()
     {
         if (MountsList.SelectedItem is not MountEntry entry) return;
-        UnmountButton.IsEnabled = false;
-        StatusText.Text = $"unmounting {entry.MountPoint} …";
-        await Task.Run(() => MountService.Instance.Unmount(entry));
-        _mounts.Remove(entry);
-        RefreshMounts();
-        ShowEnvironment();
-        StatusText.Text = $"unmounted {entry.MountPoint}";
+        try
+        {
+            UnmountButton.IsEnabled = false;
+            StatusText.Text = $"unmounting {entry.MountPoint} …";
+            await Task.Run(() => MountService.Instance.Unmount(entry));
+            _mounts.Remove(entry);
+            RefreshMounts();
+            ShowEnvironment();
+            StatusText.Text = $"unmounted {entry.MountPoint}";
+        }
+        catch (Exception ex)
+        {
+            Program.Log("unmount", ex);
+            StatusText.Text = "fail " + ex.Message;
+        }
+        finally
+        {
+            UnmountButton.IsEnabled = MountsList.SelectedItem is MountEntry;
+        }
     }
 
     private void OnDoctor(object? sender, RoutedEventArgs e)
     {
         MountsList.SelectedItem = null;
+        _panelMode = SidePanelMode.Environment;
         ShowEnvironment();
         StatusText.Text = "environment checked";
     }
