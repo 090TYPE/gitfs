@@ -38,6 +38,11 @@ internal sealed unsafe class GitfsFuseFileSystem : IDisposable
     {
         new Span<byte>(ops, FuseAbi.OperationsSize).Clear();
         Set(ops, FuseAbi.OpGetattr, (delegate* unmanaged<byte*, byte*, byte*, int>)&Callbacks.Getattr);
+        // Симлинк из git становится настоящим симлинком (спека §3.5): на
+        // Linux это возможно, и без readlink ядро отдавало бы файл, внутри
+        // которого лежит путь, — то есть ровно то, что видит Windows, где
+        // симлинки требуют привилегии.
+        Set(ops, FuseAbi.OpReadlink, (delegate* unmanaged<byte*, byte*, nuint, int>)&Callbacks.Readlink);
         Set(ops, FuseAbi.OpReaddir, (delegate* unmanaged<byte*, void*, IntPtr, long, byte*, int, int>)&Callbacks.Readdir);
         Set(ops, FuseAbi.OpOpen, (delegate* unmanaged<byte*, byte*, int>)&Callbacks.Open);
         Set(ops, FuseAbi.OpRead, (delegate* unmanaged<byte*, byte*, nuint, long, byte*, int>)&Callbacks.Read);
@@ -84,6 +89,37 @@ internal sealed unsafe class GitfsFuseFileSystem : IDisposable
         if (!result.TryGet(out var node)) return -Translate(result.Error);
         WriteStat(stat, node);
         return 0;
+    }
+
+    /// <summary>Цель символической ссылки. В git она лежит содержимым
+    /// блоба, а не отдельным полем.
+    ///
+    /// Контракт libfuse отличается от системного вызова: буфер заполняется
+    /// строкой С НУЛЁМ на конце, слишком длинная цель молча обрезается, а
+    /// возвращается 0, а не длина. Вернуть длину — распространённая ошибка,
+    /// и ядро воспримет её как код ошибки.</summary>
+    public int Readlink(string path, byte* buffer, nuint size)
+    {
+        if (size == 0) return -Errno.Inval;
+
+        var lookup = _target.Lookup(path);
+        if (!lookup.TryGet(out var node)) return -Translate(lookup.Error);
+        if (node.Kind != NodeKind.Symlink) return -Errno.Inval;   // EINVAL, как у readlink(2)
+
+        var opened = _target.Open(path, OpenMode.Read);
+        if (!opened.TryGet(out var handle)) return -Translate(opened.Error);
+        try
+        {
+            var capacity = (int)Math.Min(size - 1, 4096);         // место под завершающий ноль
+            var target = new byte[capacity];
+            var read = _target.Read(handle, 0, target);
+            if (!read.TryGet(out var count)) return -Translate(read.Error);
+
+            new Span<byte>(target, 0, count).CopyTo(new Span<byte>(buffer, count));
+            buffer[count] = 0;
+            return 0;
+        }
+        finally { _target.Close(handle); }
     }
 
     public int Readdir(string path, void* buffer, IntPtr filler)
@@ -292,9 +328,15 @@ internal sealed unsafe class GitfsFuseFileSystem : IDisposable
     {
         new Span<byte>(stat, FuseAbi.StatSize).Clear();
         var directory = node.Kind == NodeKind.Directory;
-        var mode = directory
-            ? FileMode.Directory | (_readOnly ? FileMode.DirReadOnly : FileMode.DirReadWrite)
-            : FileMode.Regular | (_readOnly ? FileMode.FileReadOnly : FileMode.FileReadWrite);
+        var mode = node.Kind switch
+        {
+            NodeKind.Directory =>
+                FileMode.Directory | (_readOnly ? FileMode.DirReadOnly : FileMode.DirReadWrite),
+            // Права симлинка ядро не проверяет — оно смотрит на цель;
+            // 0777 это то, что показывает любая обычная файловая система
+            NodeKind.Symlink => FileMode.Symlink | 0x1FF,
+            _ => FileMode.Regular | (_readOnly ? FileMode.FileReadOnly : FileMode.FileReadWrite),
+        };
         // Бит исполнения из git. Том монтируется с default_permissions,
         // поэтому решает ядро по тому, что мы здесь напишем: без этого
         // ./configure и tools/*.sh получали EACCES, а chmod +x «проходил»
@@ -379,6 +421,10 @@ internal sealed unsafe class GitfsFuseFileSystem : IDisposable
         public static int Readdir(byte* path, void* buffer, IntPtr filler, long offset,
             byte* fi, int flags) =>
             Guard(nameof(Readdir), fs => fs.Readdir(Str(path), buffer, filler));
+
+        [UnmanagedCallersOnly]
+        public static int Readlink(byte* path, byte* buffer, nuint size) =>
+            Guard(nameof(Readlink), fs => fs.Readlink(Str(path), buffer, size));
 
         [UnmanagedCallersOnly]
         public static int Open(byte* path, byte* fi) =>

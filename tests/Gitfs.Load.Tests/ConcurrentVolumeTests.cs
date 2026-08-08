@@ -120,7 +120,13 @@ public class ConcurrentVolumeTests
         var branch = repo.Run("symbolic-ref", "--short", "HEAD").Trim();
 
         var failures = new ConcurrentBag<string>();
-        using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+        using var stop = new CancellationTokenSource();
+
+        // Счёт итераций, а не секунд. Прежняя версия отводила читателям
+        // восемь секунд и ждала их тридцать: на загруженной машине это
+        // падало по часам, ничего не сообщая о продукте, — а тест, который
+        // краснеет не по делу, обесценивает весь набор.
+        const int RoundsPerReader = 40;
 
         var churn = new Thread(() =>
         {
@@ -139,7 +145,7 @@ public class ConcurrentVolumeTests
         {
             try
             {
-                while (!stop.IsCancellationRequested)
+                for (var round = 0; round < RoundsPerReader; round++)
                 {
                     // держим хендл открытым через смену эпохи и читаем ПОСЛЕ неё:
                     // если аренда не удержала снапшот, здесь будет обращение к
@@ -167,9 +173,14 @@ public class ConcurrentVolumeTests
 
         churn.Start();
         foreach (var r in readers) r.Start();
-        foreach (var r in readers) Assert.True(r.Join(TimeSpan.FromSeconds(30)), "a reader hung");
+        // Таймаут остаётся, но щедрый и с другим смыслом: зависший читатель —
+        // это и есть тот дефект, который тест ищет (вставший навсегда том),
+        // а не медленная машина.
+        foreach (var r in readers)
+            Assert.True(r.Join(TimeSpan.FromMinutes(3)),
+                "a reader never finished — the volume is wedged, not merely slow");
         stop.Cancel();
-        churn.Join(TimeSpan.FromSeconds(10));
+        churn.Join(TimeSpan.FromSeconds(30));
 
         Assert.True(failures.IsEmpty, string.Join("\n", failures.Take(10)));
     }

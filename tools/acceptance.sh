@@ -270,6 +270,25 @@ c_overlay_on_immutable_view() {
     [ "$got" = "edited in a commit view" ] || echo "read back: $got"
 }
 
+c_symlinks_are_real() {
+    # git хранит симлинк режимом 120000, содержимое блоба — путь цели.
+    # На Linux это обязан быть НАСТОЯЩИЙ симлинк: иначе всё, что ходит по
+    # дереву, видит обычный файл со странным содержимым.
+    local link
+    link="$(find "$mount_point/branches/$branch" -maxdepth 3 -type l 2>/dev/null | head -1)"
+    if [ -z "$link" ]; then
+        # в этом репозитории симлинков нет — проверять нечего, но и
+        # молчать нельзя: пустой вывод здесь означает успех
+        local in_git
+        in_git="$(git_at ls-files -s | awk '$1 == "120000"' | head -1)"
+        [ -z "$in_git" ] || echo "git has a symlink ($in_git) and the volume shows none"
+        return
+    fi
+    local target
+    target="$(readlink "$link")"
+    [ -n "$target" ] || echo "readlink on $link returned nothing"
+}
+
 # ---------- главный инвариант ----------
 # Сравнивается СОСТОЯНИЕ ДО и ПОСЛЕ, а не «репозиторий чист»: проверять
 # чистоту неверно — под приёмку обычно попадает рабочая копия с правками,
@@ -311,6 +330,7 @@ check "created file shows up in the listing"     c_created_is_listed
 check "deleting a file"                          c_delete
 check "delete then recreate a repo file"        c_delete_then_recreate
 check "overlay covers an immutable view"         c_overlay_on_immutable_view
+check "symlinks are real symlinks"              c_symlinks_are_real
 check "REPOSITORY IS UNTOUCHED"                  c_repository_untouched
 
 echo
