@@ -131,6 +131,16 @@ public sealed class RepoBuilder : IDisposable
             foreach (var probe in new[] { ".git", ".git/objects", ".git/objects/pack", ".git/refs" })
                 sb.Append("\n  ").Append(probe).Append(": ")
                   .Append(Directory.Exists(Path.Combine(Root, probe)) ? "ok" : "MISSING");
+            // Loose против packed: если объекты не потеряны, а упакованы,
+            // значит их кто-то паковал — а паковать в фикстуре должен
+            // только явный Repack
+            sb.Append("\n  count-objects: ").Append(Quiet("count-objects", "-v"));
+            sb.Append("\n  packs: ").Append(string.Join(" ",
+                Directory.Exists(Path.Combine(GitDir, "objects", "pack"))
+                    ? Directory.EnumerateFiles(Path.Combine(GitDir, "objects", "pack"))
+                        .Select(Path.GetFileName)
+                    : ["(no pack dir)"]));
+            sb.Append("\n  git: ").Append(Quiet("--version"));
             sb.Append("\n  fsck: ").Append(Quiet("fsck", "--connectivity-only"));
         }
         catch (Exception e) { sb.Append("\n  (diagnosis failed: ").Append(e.Message).Append(')'); }
