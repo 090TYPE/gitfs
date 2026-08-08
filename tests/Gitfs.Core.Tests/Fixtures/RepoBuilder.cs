@@ -61,9 +61,66 @@ public sealed class RepoBuilder : IDisposable
         {
             var stdout = System.Text.Encoding.UTF8.GetString(ms.ToArray());
             throw new InvalidOperationException(
-                $"git {string.Join(' ', args)} failed ({p.ExitCode}): {err} {stdout}".Trim());
+                $"git {string.Join(' ', args)} failed ({p.ExitCode}): {err} {stdout}".Trim()
+                + Diagnose());
         }
         return ms.ToArray();
+    }
+
+    /// <summary>Состояние фикстуры на момент отказа git. Нужно потому, что
+    /// на раннере CI появились падения, которые не воспроизводятся ни на
+    /// одной доступной машине: git не мог прочитать объект, который сам же
+    /// только что записал. Догадки тут бесполезны — пусть следующий отказ
+    /// придёт с фактами: цел ли каталог, сколько объектов на диске, и что
+    /// об этом думает сам git.</summary>
+    private string Diagnose()
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.Append("\n  --- fixture state ---");
+        sb.Append("\n  root: ").Append(Root)
+          .Append(Directory.Exists(Root) ? " (exists)" : " (GONE)");
+        try
+        {
+            var objects = Path.Combine(GitDir, "objects");
+            if (Directory.Exists(objects))
+            {
+                var loose = Directory.EnumerateFiles(objects, "*", SearchOption.AllDirectories).Count();
+                sb.Append("\n  objects on disk: ").Append(loose);
+            }
+            else sb.Append("\n  objects/: MISSING");
+
+            var drive = new DriveInfo(Path.GetPathRoot(Root) ?? "/");
+            sb.Append("\n  free space: ").Append(drive.AvailableFreeSpace >> 20).Append(" MB");
+            sb.Append("\n  temp root: ").Append(Path.GetTempPath());
+            sb.Append("\n  sibling fixtures: ").Append(
+                Directory.EnumerateDirectories(Path.GetTempPath(), "gitfs-fixture-*").Count());
+            sb.Append("\n  fsck: ").Append(Quiet("fsck", "--connectivity-only"));
+        }
+        catch (Exception e) { sb.Append("\n  (diagnosis failed: ").Append(e.Message).Append(')'); }
+        return sb.ToString();
+    }
+
+    /// <summary>git без броска исключения — для диагностики, где отказ
+    /// самой диагностики не должен подменять исходную ошибку.</summary>
+    private string Quiet(params string[] args)
+    {
+        try
+        {
+            var psi = new ProcessStartInfo("git")
+            {
+                WorkingDirectory = Root,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+            };
+            foreach (var (k, v) in Env) psi.Environment[k] = v;
+            foreach (var a in args) psi.ArgumentList.Add(a);
+            using var p = Process.Start(psi)!;
+            var output = p.StandardOutput.ReadToEnd() + p.StandardError.ReadToEnd();
+            p.WaitForExit();
+            return $"exit {p.ExitCode} {output.Replace('\n', ' ').Trim()}";
+        }
+        catch (Exception e) { return "could not run: " + e.Message; }
     }
 
     public void WriteFile(string relativePath, string content)
