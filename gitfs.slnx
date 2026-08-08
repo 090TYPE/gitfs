@@ -9,6 +9,7 @@
     <Project Path="src/Gitfs.Vfs/Gitfs.Vfs.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/Gitfs.App.Tests/Gitfs.App.Tests.csproj" />
     <Project Path="tests/Gitfs.Core.Tests/Gitfs.Core.Tests.csproj" />
     <Project Path="tests/Gitfs.Diagnostics.Tests/Gitfs.Diagnostics.Tests.csproj" />
     <Project Path="tests/Gitfs.Load.Tests/Gitfs.Load.Tests.csproj" />

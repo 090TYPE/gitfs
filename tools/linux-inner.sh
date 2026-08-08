@@ -10,7 +10,7 @@ git config --global user.name gitfs
 
 echo "=== unit tests ==="
 status=0
-for project in tests/Gitfs.Core.Tests tests/Gitfs.Vfs.Tests tests/Gitfs.Mount.Fuse.Tests tests/Gitfs.Diagnostics.Tests tests/Gitfs.Load.Tests; do
+for project in tests/Gitfs.Core.Tests tests/Gitfs.Vfs.Tests tests/Gitfs.Mount.Fuse.Tests tests/Gitfs.Diagnostics.Tests tests/Gitfs.App.Tests tests/Gitfs.Load.Tests; do
     dotnet test "$project" -v q --nologo 2>&1 | grep -E "Passed!|Failed!|error" || status=1
 done
 
