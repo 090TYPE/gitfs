@@ -6,11 +6,16 @@ public sealed class VirtualTree
 {
     private readonly Dictionary<string, IView> _views;
     private readonly List<IView> _ordered;
+    private readonly string _repositoryName;
 
-    public VirtualTree(IEnumerable<IView> views)
+    /// <param name="repositoryName">Попадает в autorun.inf как метка тома.
+    /// Значение по умолчанию есть, чтобы полторы сотни тестов, которым до
+    /// оформления Проводника дела нет, не перечисляли его каждый раз.</param>
+    public VirtualTree(IEnumerable<IView> views, string repositoryName = "repository")
     {
         _ordered = views.ToList();
         _views = _ordered.ToDictionary(v => v.Name, StringComparer.OrdinalIgnoreCase);
+        _repositoryName = repositoryName;
     }
 
     public NodeInfo? Resolve(RepoSnapshot snapshot, string path)
@@ -26,22 +31,68 @@ public sealed class VirtualTree
                     stamp = info.Timestamp;
             return NodeInfo.Directory(stamp);
         }
+        // autorun.inf в корне тома — иконка самого диска (только Windows)
+        if (segments.Length == 1 && Same(segments[0], ShellFolders.AutorunInf)
+            && ShellFolders.AutorunFor(_repositoryName) is { } autorun)
+        {
+            return new NodeInfo(NodeKind.File, default, autorun.LongLength,
+                DateTimeOffset.Now, hidden: true, system: true);
+        }
         if (!_views.TryGetValue(segments[0], out var view)) return null;
-        return view.Resolve(snapshot, segments[1..]);
+
+        // desktop.ini в корне вьюхи — оформление папки в Проводнике
+        if (segments.Length == 2 && Same(segments[1], ShellFolders.DesktopIni)
+            && ShellFolders.DesktopIniFor(view.Name) is { } ini)
+        {
+            return new NodeInfo(NodeKind.File, default, ini.LongLength,
+                DateTimeOffset.Now, hidden: true, system: true);
+        }
+
+        var node = view.Resolve(snapshot, segments[1..]);
+        // Корень вьюхи помечается системным: без этого атрибута Проводник в
+        // desktop.ini даже не заглядывает.
+        return segments.Length == 1 && node is { Kind: NodeKind.Directory }
+               && ShellFolders.DesktopIniFor(view.Name) is not null
+            ? node.Value.AsShellFolder()
+            : node;
     }
+
+    private static bool Same(string a, string b) =>
+        string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
 
     public IEnumerable<DirEntry>? List(RepoSnapshot snapshot, string path)
     {
         var segments = PathGrammar.Split(path);
         if (segments is null) return null;
-        if (segments.Length == 0)
+        if (segments.Length == 0) return ListRoot(snapshot);
+        if (!_views.TryGetValue(segments[0], out var view)) return null;
+
+        var listed = view.List(snapshot, segments[1..]);
+        if (segments.Length != 1) return listed;
+        if (ShellFolders.DesktopIniFor(view.Name) is not { } ini) return listed;
+        // desktop.ini лежит В корне вьюхи, значит и в листинге он оттуда же
+        return listed.Append(new DirEntry(ShellFolders.DesktopIni,
+            new NodeInfo(NodeKind.File, default, ini.LongLength, DateTimeOffset.Now,
+                hidden: true, system: true)));
+    }
+
+    private IEnumerable<DirEntry> ListRoot(RepoSnapshot snapshot)
+    {
+        foreach (var v in _ordered)
+        {
             // дата вьюхи в листинге корня обязана совпадать с её Resolve —
             // иначе readdir показывает 1970, а stat — правильную (ревью M2)
-            return _ordered.Select(v => new DirEntry(v.Name,
-                v.Resolve(snapshot, Array.Empty<string>())
-                    ?? NodeInfo.Directory(DateTimeOffset.UnixEpoch)));
-        if (!_views.TryGetValue(segments[0], out var view)) return null;
-        return view.List(snapshot, segments[1..]);
+            var info = v.Resolve(snapshot, Array.Empty<string>())
+                       ?? NodeInfo.Directory(DateTimeOffset.UnixEpoch);
+            if (ShellFolders.DesktopIniFor(v.Name) is not null) info = info.AsShellFolder();
+            yield return new DirEntry(v.Name, info);
+        }
+        if (ShellFolders.AutorunFor(_repositoryName) is { } autorun)
+        {
+            yield return new DirEntry(ShellFolders.AutorunInf,
+                new NodeInfo(NodeKind.File, default, autorun.LongLength, DateTimeOffset.Now,
+                    hidden: true, system: true));
+        }
     }
 
     /// <summary>Байты файла, которого нет ни в репозитории, ни на диске
@@ -51,7 +102,11 @@ public sealed class VirtualTree
     {
         var segments = PathGrammar.Split(path);
         if (segments is null || segments.Length == 0) return null;
+        if (segments.Length == 1 && Same(segments[0], ShellFolders.AutorunInf))
+            return ShellFolders.AutorunFor(_repositoryName);
         if (!_views.TryGetValue(segments[0], out var view)) return null;
+        if (segments.Length == 2 && Same(segments[1], ShellFolders.DesktopIni))
+            return ShellFolders.DesktopIniFor(view.Name);
         return view is ISyntheticView synthetic ? synthetic.Read(snapshot, segments[1..]) : null;
     }
 

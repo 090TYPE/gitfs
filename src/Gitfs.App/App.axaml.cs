@@ -31,6 +31,21 @@ public partial class App : Application
                     desktop.ShutdownMode = ShutdownMode.OnMainWindowClose;
                     base.OnFrameworkInitializationCompleted();
                     return;
+                case "icons":
+                    // Отрисовка ассетов: приложение поднимается ради одного
+                    // растеризатора и сразу выходит, окна не показывая.
+                    {
+                        var target = Environment.GetEnvironmentVariable("GITFS_ICON_OUT")
+                                     ?? "src/Gitfs.Vfs/Assets";
+                        var written = IconRenderer.RenderAll(target);
+                        Console.WriteLine($"{written} icon(s) written to {target}");
+                        // Именно Exit, а не Shutdown: цикл диспетчера ещё не
+                        // запущен, и Shutdown из этой точки бросает «Dispatcher
+                        // shut down» уже ПОСЛЕ того, как файлы записаны, —
+                        // инструмент отрабатывал и всё равно падал.
+                        Environment.Exit(written > 0 ? 0 : 1);
+                        return;
+                    }
                 case "first-run":
                     desktop.MainWindow = new FirstRunWindow();
                     desktop.ShutdownMode = ShutdownMode.OnMainWindowClose;

@@ -391,7 +391,7 @@ public static class TrayBadge
 
     // ---------- ICO ----------
 
-    internal static byte[] BuildIco(IReadOnlyList<(int Size, byte[] Png)> images)
+    public static byte[] BuildIco(IReadOnlyList<(int Size, byte[] Png)> images)
     {
         using var ico = new MemoryStream();
         var writer = new BinaryWriter(ico);

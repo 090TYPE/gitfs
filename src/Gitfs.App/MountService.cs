@@ -165,7 +165,8 @@ public sealed class MountService
     /// собственным окном: подписать одним числом две разные величины значит
     /// тихо урезать одну из них.</summary>
     public static VirtualTree BuildTree(IReadOnlyCollection<string> views,
-        MountOptions? options = null, MountLog? log = null, OverlayStore? overlay = null)
+        MountOptions? options = null, MountLog? log = null, OverlayStore? overlay = null,
+        string repositoryName = "repository")
     {
         var opts = options ?? MountOptions.Default;
         var names = NamePolicy.For(opts.NamePolicy);
@@ -180,7 +181,7 @@ public sealed class MountService
         // ведёт себя так. Отключить её значило бы прятать от человека
         // единственное объяснение, когда оно нужнее всего (спека §14).
         if (log is not null) list.Add(new GitfsView(names, log, overlay));
-        return new VirtualTree(list);
+        return new VirtualTree(list, repositoryName);
     }
 
     public static string? ResolveGitDir(string repoPath) => Doctor.ResolveGitDir(repoPath);
@@ -251,8 +252,9 @@ public sealed class MountService
         var manager = new SnapshotManager(gitDir, options: opts) { Log = log };
         var overlay = OverlayStore.Create(keepOnDispose: opts.KeepOverlay, names: names);
         log.Add("mount", $"{repoPath} → {mountPoint}");
-        var target = new VfsMountTarget(manager, BuildTree(views, opts, log, overlay),
-            new DirectoryInfo(repoPath).Name, readOnly: opts.ReadOnly, overlay: overlay);
+        var repoName = new DirectoryInfo(repoPath).Name;
+        var target = new VfsMountTarget(manager, BuildTree(views, opts, log, overlay, repoName),
+            repoName, readOnly: opts.ReadOnly, overlay: overlay);
         IDisposable mount;
         // выше границы адаптеры отличаются одной строкой — ровно в этом и
         // состояло обещание IMountTarget

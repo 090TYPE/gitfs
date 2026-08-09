@@ -18,6 +18,8 @@ public sealed class GitfsFileSystem : FileSystemBase
     private const uint FileAttributeReadonly = 0x01;
     private const uint FileAttributeReparsePoint = 0x400;
     private const uint FileAttributeNormal = 0x80;
+    private const uint FileAttributeHidden = 0x02;
+    private const uint FileAttributeSystem = 0x04;
 
     private readonly IMountTarget _target;
     private readonly Action<string> _log;
@@ -444,10 +446,18 @@ public sealed class GitfsFileSystem : FileSystemBase
     private uint Attributes(in NodeInfo node)
     {
         var readOnlyBit = _readOnly ? FileAttributeReadonly : 0;
+        // SYSTEM у корневой папки вьюхи — условие, при котором Проводник
+        // вообще заглядывает в desktop.ini. HIDDEN у самого desktop.ini и у
+        // autorun.inf — иначе служебные файлы торчат в каждой вьюхе и в
+        // корне тома (увидено на живом томе: autorun.inf был виден обычным
+        // `ls`, потому что признаки не доезжали до адаптера вовсе).
+        var shellBits = (node.System ? FileAttributeSystem : 0u)
+                        | (node.Hidden ? FileAttributeHidden : 0u);
         return node.Kind switch
         {
-            NodeKind.Directory or NodeKind.Submodule => FileAttributeDirectory | readOnlyBit,
-            _ => FileAttributeNormal | readOnlyBit,
+            NodeKind.Directory or NodeKind.Submodule =>
+                FileAttributeDirectory | readOnlyBit | shellBits,
+            _ => (shellBits == 0 ? FileAttributeNormal : shellBits) | readOnlyBit,
         };
     }
 

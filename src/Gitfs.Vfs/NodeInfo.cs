@@ -28,8 +28,19 @@ public readonly struct NodeInfo
     /// у NodeKind нет места для такого признака.</summary>
     public bool Executable { get; }
 
+    /// <summary>Атрибуты оболочки Windows. Нужны ровно одному механизму —
+    /// иконкам корневых папок: Проводник читает desktop.ini только у папки с
+    /// атрибутом SYSTEM, а сам desktop.ini обязан быть HIDDEN, иначе он
+    /// торчит служебным файлом в каждой вьюхе.
+    ///
+    /// На Linux оба признака ничего не значат и никуда не отображаются —
+    /// там desktop.ini попросту не отдаётся.</summary>
+    public bool System { get; }
+    public bool Hidden { get; }
+
     public NodeInfo(NodeKind kind, ObjectId blobId, long size, DateTimeOffset timestamp,
-        bool readOnly = true, bool executable = false)
+        bool readOnly = true, bool executable = false,
+        bool system = false, bool hidden = false)
     {
         Kind = kind;
         BlobId = blobId;
@@ -37,7 +48,13 @@ public readonly struct NodeInfo
         Timestamp = timestamp;
         ReadOnly = readOnly;
         Executable = executable;
+        System = system;
+        Hidden = hidden;
     }
+
+    /// <summary>Тот же узел, помеченный как папка со своим оформлением.</summary>
+    public NodeInfo AsShellFolder() =>
+        new(Kind, BlobId, Size, Timestamp, ReadOnly, Executable, system: true, Hidden);
 
     public static NodeInfo Directory(DateTimeOffset timestamp) =>
         new(NodeKind.Directory, default, 0, timestamp);

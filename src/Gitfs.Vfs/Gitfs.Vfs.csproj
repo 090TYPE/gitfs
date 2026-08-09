@@ -4,6 +4,13 @@
     <ProjectReference Include="..\Gitfs.Core\Gitfs.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Иконки корневых папок отдаёт САМ ТОМ (.gitfs/icons/), поэтому они
+         обязаны быть внутри сборки, а не рядом с исполняемым файлом:
+         смонтировать репозиторий можно и из каталога, где ассетов нет. -->
+    <EmbeddedResource Include="Assets\*.ico" />
+  </ItemGroup>
+
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>

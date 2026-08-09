@@ -55,7 +55,19 @@ public sealed class GitfsView : ViewBase, ISyntheticView
                 return new NodeInfo(NodeKind.File, default, bytes?.LongLength ?? 0, stamp);
             }
             if (Is(segments[0], OverlayDir)) return NodeInfo.Directory(stamp);
+            if (Is(segments[0], ShellFolders.IconsDirectory) && ShellFolders.Enabled)
+                return NodeInfo.Directory(stamp);
             return null;
+        }
+
+        // .gitfs/icons/<вьюха>.ico — оформление папок берётся С САМОГО ТОМА,
+        // поэтому ссылка в desktop.ini относительная и не зависит ни от буквы
+        // диска, ни от того, куда установлен gitfs.
+        if (segments.Count == 2 && Is(segments[0], ShellFolders.IconsDirectory))
+        {
+            var bytes = IconBytes(segments[1]);
+            return bytes is null ? null
+                : new NodeInfo(NodeKind.File, default, bytes.LongLength, stamp);
         }
 
         if (!Is(segments[0], OverlayDir)) return null;
@@ -86,6 +98,19 @@ public sealed class GitfsView : ViewBase, ISyntheticView
             yield return new DirEntry(LogFile, new NodeInfo(NodeKind.File, default,
                 Encoding.UTF8.GetByteCount(_log.Render()), stamp));
             if (_overlay is not null) yield return new DirEntry(OverlayDir, NodeInfo.Directory(stamp));
+            if (ShellFolders.Enabled)
+                yield return new DirEntry(ShellFolders.IconsDirectory, NodeInfo.Directory(stamp));
+            yield break;
+        }
+        if (Is(segments[0], ShellFolders.IconsDirectory))
+        {
+            if (segments.Count != 1 || !ShellFolders.Enabled) yield break;
+            foreach (var name in ShellFolders.IconNames)
+            {
+                if (ShellFolders.Icon(name) is not { } bytes) continue;
+                yield return new DirEntry(name + ".ico",
+                    new NodeInfo(NodeKind.File, default, bytes.LongLength, stamp));
+            }
             yield break;
         }
         if (!Is(segments[0], OverlayDir) || _overlay is null) yield break;
@@ -120,6 +145,8 @@ public sealed class GitfsView : ViewBase, ISyntheticView
     /// путём).</summary>
     public override byte[]? Read(RepoSnapshot snapshot, IReadOnlyList<string> segments)
     {
+        if (segments.Count == 2 && Is(segments[0], ShellFolders.IconsDirectory))
+            return IconBytes(segments[1]);
         if (segments.Count != 1) return null;
         if (Is(segments[0], StatusFile)) return Render(snapshot);
         if (Is(segments[0], LogFile)) return Encoding.UTF8.GetBytes(_log.Render());
@@ -146,6 +173,13 @@ public sealed class GitfsView : ViewBase, ISyntheticView
     /// <summary>Служебная вьюха не принимает запись НИГДЕ: диагностика
     /// читается, а не правится.</summary>
     public override bool IsWriteProtected(IReadOnlyList<string> segments) => true;
+
+    /// <summary>Байты .ico по имени файла. null — такой иконки нет.</summary>
+    private static byte[]? IconBytes(string fileName)
+    {
+        if (!fileName.EndsWith(".ico", StringComparison.OrdinalIgnoreCase)) return null;
+        return ShellFolders.Icon(fileName[..^4]);
+    }
 
     private bool Is(string a, string b) => string.Equals(a, b, Names.Comparison);
 

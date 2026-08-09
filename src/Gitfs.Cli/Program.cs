@@ -66,7 +66,7 @@ static void PrintUsage()
 
 /// <summary>Все пять вьюх спеки §3 по настройкам монтирования.</summary>
 static VirtualTree BuildTree(MountOptions? options = null, MountLog? log = null,
-    OverlayStore? overlay = null)
+    OverlayStore? overlay = null, string repositoryName = "repository")
 {
     var opts = options ?? MountOptions.Default;
     var names = NamePolicy.For(opts.NamePolicy);
@@ -83,7 +83,7 @@ static VirtualTree BuildTree(MountOptions? options = null, MountLog? log = null,
     // .gitfs/ появляется только у смонтированного тома: у `gitfs tree` нет ни
     // песочницы, ни журнала, и показывать пустую диагностику незачем.
     if (log is not null) views.Add(new GitfsView(names, log, overlay));
-    return new VirtualTree(views);
+    return new VirtualTree(views, repositoryName);
 }
 
 /// <summary>Разбор ключей монтирования — та же секция Advanced, что и в
@@ -362,7 +362,7 @@ static int Mount(string[] rest)
         string.Join(' ', MountOptions.AllViews.Select(v =>
             options.Views.Contains(v, StringComparer.OrdinalIgnoreCase) ? v[0].ToString() : "·")),
         DateTimeOffset.UtcNow);
-    var tree = BuildTree(options, log, overlay);
+    var tree = BuildTree(options, log, overlay, name);
     var target = new VfsMountTarget(manager, tree, name, readOnly: options.ReadOnly,
         overlay: overlay);
 
