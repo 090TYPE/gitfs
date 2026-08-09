@@ -23,11 +23,15 @@ public sealed class HistoryView : ViewBase
     private readonly int _limit;
     private readonly int _scanLimit;
 
-    public HistoryView(NamePolicy names, int limit = 500, int scanLimit = 20000)
+    private readonly MountLog? _log;
+
+    public HistoryView(NamePolicy names, int limit = 500, int scanLimit = 20000,
+        MountLog? log = null)
         : base(names)
     {
         _limit = limit;
         _scanLimit = scanLimit;
+        _log = log;
     }
 
     public override string Name => "history";
@@ -213,6 +217,14 @@ public sealed class HistoryView : ViewBase
             && snapshot.Revs.TryRead(tail) is { Parents.Count: > 0 })
             truncated = true;
 
+        // Спека §14: обрезание списка попадает в .gitfs/log.txt. Once — потому
+        // что один и тот же путь спрашивают снова и снова, а событие одно.
+        if (truncated)
+        {
+            var where = string.Join("/", displaySegments);
+            _log?.Once("truncated:" + where, "truncated",
+                $"history/{where} stopped at {revisions.Count} version(s)");
+        }
         return new PathHistory(revisions, truncated);
     }
 

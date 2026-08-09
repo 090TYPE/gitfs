@@ -110,6 +110,11 @@ public sealed class VfsMountTarget : IMountTarget
     {
         if (mode == OpenMode.Write && (_readOnly || _overlay is null))
             return GitfsResult<FileHandle>.Fail(GitfsError.AccessDenied);
+        // Служебная вьюха только читается. Иначе запись по `.gitfs/status.txt`
+        // завела бы в песочнице файл с таким именем — и он навсегда затенил бы
+        // собой диагностику, ради которой вьюха и существует.
+        if (mode == OpenMode.Write && _tree.IsSynthetic(path))
+            return GitfsResult<FileHandle>.Fail(GitfsError.AccessDenied);
         return Guard(() =>
         {
             var lease = _snapshots.Acquire();
@@ -173,6 +178,28 @@ public sealed class VfsMountTarget : IMountTarget
                         new NodeInfo(NodeKind.File, default, info.Length,
                             info.LastWriteTimeUtc, readOnly: false),
                         default, existing));
+                }
+
+                // Синтетика (.gitfs/status.txt, .gitfs/log.txt): байтов нет ни
+                // в репозитории, ни на диске — собираем их здесь и запоминаем
+                // в хендле, чтобы одно чтение видело один момент времени.
+                if (_tree.ReadSynthetic(lease.Snapshot, path) is { } bytes)
+                {
+                    return GitfsResult<FileHandle>.Ok(new FileHandle(lease, path,
+                        new NodeInfo(NodeKind.File, default, bytes.LongLength,
+                            node!.Value.Timestamp),
+                        default, synthetic: bytes));
+                }
+
+                // `.gitfs/overlay/…` — настоящий файл песочницы, показанный
+                // только на просмотр (спека §10: «пользователь всегда может
+                // увидеть, что он изменил»).
+                if (_tree.PhysicalPath(lease.Snapshot, path) is { } physical)
+                {
+                    var view = new FileInfo(physical);
+                    return GitfsResult<FileHandle>.Ok(new FileHandle(lease, path,
+                        new NodeInfo(NodeKind.File, default, view.Length, view.LastWriteTimeUtc),
+                        default, overlayPath: physical, writable: false));
                 }
 
                 // аренда переходит во владение хендла и живёт до Close

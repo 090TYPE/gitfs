@@ -5,8 +5,12 @@ namespace Gitfs.Vfs;
 /// <summary>Открытый файл. Держит аренду снапшота (объект не исчезнет из-под
 /// чтения при смене эпохи) и поток с позицией.
 ///
-/// Источников два: git-объект (только чтение, поток последовательный) и файл
-/// overlay-песочницы (чтение и запись, обычный FileStream с seek).
+/// Источников три: git-объект (только чтение, поток последовательный), файл
+/// overlay-песочницы (чтение и запись, обычный FileStream с seek) и
+/// СИНТЕТИЧЕСКОЕ содержимое — байты, которых нет ни в репозитории, ни на
+/// диске: `.gitfs/status.txt` и `.gitfs/log.txt` собираются в момент
+/// открытия. Спека §14: «оба файла — часть смонтированного дерева, поэтому
+/// доступны без отдельного инструмента».
 ///
 /// Политика позиционирования для git-объектов: seek назад невозможен, поэтому
 /// последовательное чтение идёт быстрым путём, чтение назад переоткрывает
@@ -17,6 +21,8 @@ public sealed class FileHandle : IDisposable
     private readonly SnapshotLease _lease;
     private readonly ObjectId _blobId;
     private readonly string? _overlayPath;
+    private readonly byte[]? _synthetic;
+    private readonly bool _writable;
 
     private Stream? _stream;
     private long _position;
@@ -29,13 +35,15 @@ public sealed class FileHandle : IDisposable
     public bool IsOverlay => _overlayPath is not null;
 
     internal FileHandle(SnapshotLease lease, string path, in NodeInfo info, in ObjectId blobId,
-        string? overlayPath = null)
+        string? overlayPath = null, byte[]? synthetic = null, bool writable = true)
     {
         _lease = lease;
         Path = path;
         Info = info;
         _blobId = blobId;
         _overlayPath = overlayPath;
+        _synthetic = synthetic;
+        _writable = writable;
     }
 
     /// <summary>Читает окно [offset, offset+buffer.Length) из объекта.
@@ -43,6 +51,16 @@ public sealed class FileHandle : IDisposable
     internal int Read(long offset, Span<byte> buffer)
     {
         if (_overlayPath is not null) return ReadOverlay(offset, buffer);
+        if (_synthetic is not null)
+        {
+            // Байты собраны при открытии и с тех пор не меняются: диагностика,
+            // которая шевелится посреди чтения, читалась бы кусками от разных
+            // моментов и не складывалась бы в осмысленную картину.
+            if (offset >= _synthetic.Length) return 0;
+            var take = (int)Math.Min(buffer.Length, _synthetic.Length - offset);
+            _synthetic.AsSpan((int)offset, take).CopyTo(buffer);
+            return take;
+        }
         if (offset >= Info.Size) return 0;
         if (_stream is null || offset < _position)
         {
@@ -80,7 +98,11 @@ public sealed class FileHandle : IDisposable
 
     internal int Write(long offset, ReadOnlySpan<byte> data)
     {
-        if (_overlayPath is null) throw new InvalidOperationException("handle is read-only");
+        // Файл песочницы, открытый ЧЕРЕЗ .gitfs/overlay/, физический — но
+        // смотровой: спека обещает видимость записанного, а не второй путь
+        // записи в ту же песочницу мимо всех правил.
+        if (_overlayPath is null || !_writable)
+            throw new InvalidOperationException("handle is read-only");
         var file = OverlayStream();
         file.Position = offset;
         file.Write(data);
@@ -96,7 +118,11 @@ public sealed class FileHandle : IDisposable
     /// мусор в конце.</summary>
     internal void SetLength(long length)
     {
-        if (_overlayPath is null) throw new InvalidOperationException("handle is read-only");
+        // Файл песочницы, открытый ЧЕРЕЗ .gitfs/overlay/, физический — но
+        // смотровой: спека обещает видимость записанного, а не второй путь
+        // записи в ту же песочницу мимо всех правил.
+        if (_overlayPath is null || !_writable)
+            throw new InvalidOperationException("handle is read-only");
         var file = OverlayStream();
         file.SetLength(length);
         file.Flush();
@@ -107,8 +133,14 @@ public sealed class FileHandle : IDisposable
     {
         if (_stream is FileStream existing) return existing;
         _stream?.Dispose();
-        var file = new FileStream(_overlayPath!, FileMode.OpenOrCreate,
-            FileAccess.ReadWrite, FileShare.ReadWrite);
+        // Смотровой хендл открывается ТОЛЬКО на чтение и ничего не создаёт:
+        // OpenOrCreate по пути внутри .gitfs/overlay/ завёл бы пустой файл там,
+        // где пользователь всего лишь посмотрел, что он записал.
+        var file = _writable
+            ? new FileStream(_overlayPath!, FileMode.OpenOrCreate,
+                FileAccess.ReadWrite, FileShare.ReadWrite)
+            : new FileStream(_overlayPath!, FileMode.Open,
+                FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
         _stream = file;
         return file;
     }

@@ -179,6 +179,12 @@ public sealed class SnapshotManager : IDisposable
     private long _lastCheckTicks;
     private bool _disposed;
 
+    /// <summary>Журнал тома. Смена эпохи — это переоткрытие пакетов, и
+    /// спека §14 требует записывать её: том продолжает работать, но
+    /// объекты под ним пересобрались, и «деградация» в интерфейсе считается
+    /// именно отсюда, а не из посторонних предупреждений окружения.</summary>
+    public MountLog? Log { get; set; }
+
     public SnapshotManager(string gitDir, TimeSpan? throttle = null, MountOptions? options = null)
     {
         _gitDir = gitDir;
@@ -228,6 +234,8 @@ public sealed class SnapshotManager : IDisposable
                 _signature = signature;
                 Volatile.Write(ref _current, fresh); // публикация = одна запись ссылки
                 old.Release();  // ссылка менеджера; живые аренды додержат снапшот сами
+                Log?.Add("pack-reopened",
+                    $"repository changed under the volume; objects reopened ({fresh.Objects.PackCount} pack(s))");
                 return fresh;
             }
             finally { _lastCheckTicks = Environment.TickCount64; }

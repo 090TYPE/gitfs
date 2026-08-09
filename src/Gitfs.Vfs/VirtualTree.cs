@@ -43,4 +43,35 @@ public sealed class VirtualTree
         if (!_views.TryGetValue(segments[0], out var view)) return null;
         return view.List(snapshot, segments[1..]);
     }
+
+    /// <summary>Байты файла, которого нет ни в репозитории, ни на диске
+    /// (`.gitfs/status.txt`, `.gitfs/log.txt`). null — обычный путь, читается
+    /// как всегда.</summary>
+    public byte[]? ReadSynthetic(RepoSnapshot snapshot, string path)
+    {
+        var segments = PathGrammar.Split(path);
+        if (segments is null || segments.Length == 0) return null;
+        if (!_views.TryGetValue(segments[0], out var view)) return null;
+        return view is ISyntheticView synthetic ? synthetic.Read(snapshot, segments[1..]) : null;
+    }
+
+    /// <summary>Путь на диске для узла служебной вьюхи (`.gitfs/overlay/…`).
+    /// null — узел не физический.</summary>
+    public string? PhysicalPath(RepoSnapshot snapshot, string path)
+    {
+        var segments = PathGrammar.Split(path);
+        if (segments is null || segments.Length == 0) return null;
+        if (!_views.TryGetValue(segments[0], out var view)) return null;
+        return view is ISyntheticView synthetic
+            ? synthetic.PhysicalPath(snapshot, segments[1..]) : null;
+    }
+
+    /// <summary>Принадлежит ли путь служебной вьюхе. Такие пути не
+    /// записываются: у диагностики нет режима «изменить».</summary>
+    public bool IsSynthetic(string path)
+    {
+        var segments = PathGrammar.Split(path);
+        if (segments is null || segments.Length == 0) return false;
+        return _views.TryGetValue(segments[0], out var view) && view is ISyntheticView;
+    }
 }

@@ -64,18 +64,23 @@ static void PrintUsage()
 }
 
 /// <summary>Все пять вьюх спеки §3 по настройкам монтирования.</summary>
-static VirtualTree BuildTree(MountOptions? options = null)
+static VirtualTree BuildTree(MountOptions? options = null, MountLog? log = null,
+    OverlayStore? overlay = null)
 {
     var opts = options ?? MountOptions.Default;
     var names = NamePolicy.For(opts.NamePolicy);
-    return new VirtualTree(new IView[]
+    var views = new List<IView>
     {
         new BranchesView(names),
         new TagsView(names),
         new CommitsView(names, opts.CommitLimit),
         new DatesView(names),
-        new HistoryView(names, opts.HistoryLimit),
-    });
+        new HistoryView(names, opts.HistoryLimit, log: log),
+    };
+    // .gitfs/ появляется только у смонтированного тома: у `gitfs tree` нет ни
+    // песочницы, ни журнала, и показывать пустую диагностику незачем.
+    if (log is not null) views.Add(new GitfsView(names, log, overlay));
+    return new VirtualTree(views);
 }
 
 /// <summary>Разбор ключей монтирования — та же секция Advanced, что и в
@@ -289,14 +294,16 @@ static int Mount(string[] rest)
     }
 
     var gitDir = Doctor.ResolveGitDir(repoPath)!;
-    var manager = new SnapshotManager(gitDir, options: options);
-    var tree = BuildTree(options);
+    var log = new MountLog();
+    var manager = new SnapshotManager(gitDir, options: options) { Log = log };
     var name = new DirectoryInfo(repoPath).Name;
     // overlay включён: без него Word и Excel не откроют файл из старого
     // коммита — они пишут lock-файлы рядом с открываемым (спека §10).
     // using обязателен: песочница живёт ровно столько, сколько том.
     using var overlay = OverlayStore.Create(keepOnDispose: options.KeepOverlay,
         names: NamePolicy.For(options.NamePolicy));
+    log.Add("mount", $"{repoPath} -> {mountPoint}");
+    var tree = BuildTree(options, log, overlay);
     var target = new VfsMountTarget(manager, tree, name, readOnly: options.ReadOnly,
         overlay: overlay);
 

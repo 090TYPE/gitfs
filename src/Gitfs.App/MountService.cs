@@ -45,7 +45,7 @@ public sealed class MountService
     /// Порядок обязателен: сперва том (иначе операция в полёте пишет в уже
     /// удалённый каталог), потом песочница.</summary>
     private sealed record LiveMount(IDisposable Mount, OverlayStore Overlay,
-        SnapshotManager? Snapshots) : IDisposable
+        SnapshotManager? Snapshots, MountLog? Log = null) : IDisposable
     {
         public void Dispose()
         {
@@ -130,7 +130,7 @@ public sealed class MountService
     /// собственным окном: подписать одним числом две разные величины значит
     /// тихо урезать одну из них.</summary>
     public static VirtualTree BuildTree(IReadOnlyCollection<string> views,
-        MountOptions? options = null)
+        MountOptions? options = null, MountLog? log = null, OverlayStore? overlay = null)
     {
         var opts = options ?? MountOptions.Default;
         var names = NamePolicy.For(opts.NamePolicy);
@@ -139,7 +139,12 @@ public sealed class MountService
         if (views.Contains("tags")) list.Add(new TagsView(names));
         if (views.Contains("commits")) list.Add(new CommitsView(names, opts.CommitLimit));
         if (views.Contains("dates")) list.Add(new DatesView(names));
-        if (views.Contains("history")) list.Add(new HistoryView(names, opts.HistoryLimit));
+        if (views.Contains("history")) list.Add(new HistoryView(names, opts.HistoryLimit, log: log));
+        // Служебная вьюха идёт последней и НЕ выбирается пользователем:
+        // диагностика тома — не вьюха истории, а способ понять, почему том
+        // ведёт себя так. Отключить её значило бы прятать от человека
+        // единственное объяснение, когда оно нужнее всего (спека §14).
+        if (log is not null) list.Add(new GitfsView(names, log, overlay));
         return new VirtualTree(list);
     }
 
@@ -207,9 +212,11 @@ public sealed class MountService
 
 #if GITFS_WINFSP || GITFS_FUSE
         var names = NamePolicy.For(opts.NamePolicy);
-        var manager = new SnapshotManager(gitDir, options: opts);
+        var log = new MountLog();
+        var manager = new SnapshotManager(gitDir, options: opts) { Log = log };
         var overlay = OverlayStore.Create(keepOnDispose: opts.KeepOverlay, names: names);
-        var target = new VfsMountTarget(manager, BuildTree(views, opts),
+        log.Add("mount", $"{repoPath} → {mountPoint}");
+        var target = new VfsMountTarget(manager, BuildTree(views, opts, log, overlay),
             new DirectoryInfo(repoPath).Name, readOnly: opts.ReadOnly, overlay: overlay);
         IDisposable mount;
         // выше границы адаптеры отличаются одной строкой — ровно в этом и
@@ -229,7 +236,7 @@ public sealed class MountService
         // мусора. Успешный путь этим не страдал — там всё освобождает
         // GitfsMount.Dispose; текла ровно ветка отказа.
         catch { target.Dispose(); throw; }
-        lock (_gate) _live[mountPoint] = new LiveMount(mount, overlay, manager);
+        lock (_gate) _live[mountPoint] = new LiveMount(mount, overlay, manager, log);
 #endif
         var entry = new MountEntry(new DirectoryInfo(repoPath).Name, repoPath, mountPoint,
             string.Join(' ', new[] { "branches", "tags", "commits", "dates", "history" }

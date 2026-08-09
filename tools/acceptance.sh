@@ -40,9 +40,77 @@ c_mounted() { mountpoint -q "$mount_point" || echo "$mount_point is not a mount 
 
 c_five_views() {
     local got want
-    got="$(ls "$mount_point" | sort | tr '\n' ' ')"
-    want="branches commits dates history tags "
+    # -A: служебная .gitfs/ начинается с точки и обычным ls не видна
+    got="$(ls -A "$mount_point" | sort | tr '\n' ' ')"
+    want=".gitfs branches commits dates history tags "
     [ "$got" = "$want" ] || echo "got: $got"
+}
+
+# ---------- .gitfs/: диагностика внутри самого тома (спека §14) ----------
+
+c_service_view_has_status_and_log() {
+    [ -f "$mount_point/.gitfs/status.txt" ] || { echo "no .gitfs/status.txt"; return; }
+    [ -f "$mount_point/.gitfs/log.txt" ] || echo "no .gitfs/log.txt"
+}
+
+c_status_is_not_empty_and_names_the_repo() {
+    local text
+    text="$(cat "$mount_point/.gitfs/status.txt")"
+    [ -n "$text" ] || { echo "status.txt is empty"; return; }
+    printf '%s' "$text" | grep -q "gitfs status" || echo "status.txt has no heading"
+    printf '%s' "$text" | grep -q "packs" || echo "status.txt says nothing about packs"
+}
+
+c_status_size_matches_its_content() {
+    # stat и чтение обязаны согласиться: Проводник верит stat, и файл,
+    # объявленный нулевым, читается как пустой независимо от содержимого
+    local declared actual
+    declared=$(stat -c %s "$mount_point/.gitfs/status.txt")
+    actual=$(wc -c < "$mount_point/.gitfs/status.txt")
+    [ "$declared" = "$actual" ] || echo "stat says $declared, read gave $actual"
+}
+
+c_service_view_is_read_only() {
+    # Спека §10 обещает ВИДИМОСТЬ песочницы, а не второй способ в неё писать.
+    #
+    # stderr гасится ВНУТРИ подоболочки. Первая версия писала
+    # `echo x > … 2>/dev/null`, но об отказе перенаправления сообщает сама
+    # оболочка, и её сообщение уходило в stderr вызывающего — а check
+    # перехватывает stderr и считает любой вывод провалом. Проверка падала
+    # ровно тогда, когда том вёл себя правильно.
+    #
+    # ЧЕСТНО О ГРАНИЦАХ: отказ здесь переопределён трижды — режим 0444 у
+    # узла, явный запрет в VfsMountTarget.Open и отсутствие блоба для
+    # затравки. Снятие любых двух из трёх эту проверку не роняет, то есть
+    # различить, какой из запретов работает, она не может. Она подтверждает
+    # то, что видит пользователь, а не то, какой строкой это сделано;
+    # адресный запрет проверяется модульным тестом
+    # GitfsViewTests.The_service_view_refuses_writes, и он падает от снятия
+    # ровно одной строки.
+    local before after
+    before="$(cat "$mount_point/.gitfs/status.txt" 2>/dev/null | head -1)"
+    if ( exec 2>/dev/null; echo x > "$mount_point/.gitfs/status.txt" ); then
+        echo "the service view accepted a write"
+        return
+    fi
+    after="$(cat "$mount_point/.gitfs/status.txt" 2>/dev/null | head -1)"
+    [ "$before" = "$after" ] || echo "the file changed even though the write was refused"
+}
+
+c_overlay_view_shows_what_was_written() {
+    # Спека §10: «пользователь всегда может увидеть, что он изменил».
+    # У этой проверки одна реализация и она умеет падать: уберите ветку
+    # overlay/ из GitfsView — и запись перестанет быть видна.
+    # СВОЙ файл, а не LICENSE: первая версия писала в файл, который сверяют
+    # с git другие проверки, и второй прогон набора падал тремя чужими
+    # провалами. Набор обязан быть повторяемым — ради этого второй прогон и
+    # заведён, и ломать его собственной проверкой особенно нелепо.
+    local mark="written-through-acceptance-$$"
+    printf '%s\n' "$mark" > "$mount_point/branches/$branch/.overlay-probe" 2>/dev/null \
+        || { echo "could not write to the volume at all"; return; }
+    [ -d "$mount_point/.gitfs/overlay" ] || { echo "no .gitfs/overlay directory"; return; }
+    grep -rq "$mark" "$mount_point/.gitfs/overlay" 2>/dev/null \
+        || echo "the sandbox view does not show the write that just happened"
 }
 
 c_branch_listed() {
@@ -331,7 +399,11 @@ c_repository_untouched() {
 }
 
 check "volume is mounted"                        c_mounted
-check "root lists five views"                    c_five_views
+check "root lists five views plus .gitfs"        c_five_views
+check ".gitfs: status and log are there"         c_service_view_has_status_and_log
+check ".gitfs: status says something real"       c_status_is_not_empty_and_names_the_repo
+check ".gitfs: stat agrees with the content"     c_status_size_matches_its_content
+check ".gitfs: the service view is read-only"    c_service_view_is_read_only
 check "branch $branch is listed"                 c_branch_listed
 check "file from a branch matches git size"      c_size_matches_git
 check "nested path reads"                        c_nested_path
@@ -357,6 +429,7 @@ check "created file shows up in the listing"     c_created_is_listed
 check "deleting a file"                          c_delete
 check "delete then recreate a repo file"        c_delete_then_recreate
 check "overlay covers an immutable view"         c_overlay_on_immutable_view
+check ".gitfs: overlay shows what was written"   c_overlay_view_shows_what_was_written
 check "symlinks are real symlinks"              c_symlinks_are_real
 check "REPOSITORY IS UNTOUCHED"                  c_repository_untouched
 
