@@ -68,6 +68,19 @@ public sealed class ObjectReader : IObjectReader, IDisposable
 
     public int PackCount => _packs.Length;
 
+    /// <summary>Сколько объектов лежит в пакетах. Loose не считаем: их
+    /// пересчёт — обход всего objects/, а панель деталей обновляется каждые
+    /// две секунды. Число честно называется «packed».</summary>
+    public long PackedObjectCount
+    {
+        get
+        {
+            long total = 0;
+            foreach (var pack in _packs) total += pack.ObjectCount;
+            return total;
+        }
+    }
+
     public bool Contains(in ObjectId id)
     {
         if (_loose.Contains(id)) return true;

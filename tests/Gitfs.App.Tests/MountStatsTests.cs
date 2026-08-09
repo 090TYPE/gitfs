@@ -23,7 +23,7 @@ public class MountStatsTests
     public void A_fresh_cache_reports_that_nothing_was_read_rather_than_zero_percent()
     {
         var stats = new MountService.MountStats(
-            0, 0, 0, 1024, 0, 0, 0, 0, 0, 0, 1, 0, 0);
+            0, 0, 0, 1024, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0);
         Assert.Null(stats.HitRate);
     }
 
@@ -34,7 +34,7 @@ public class MountStatsTests
             TreeHits: 6, TreeMisses: 2, TreeBytes: 0, TreeBudget: 0,
             ListingHits: 2, ListingMisses: 0,
             PathHits: 0, PathMisses: 0,
-            DeltaHits: 0, SizeHits: 0, Packs: 1,
+            DeltaHits: 0, SizeHits: 0, Packs: 1, PackedObjects: 0, Reopens: 0,
             OverlayFiles: 0, OverlayBytes: 0);
         Assert.Equal(0.8, stats.HitRate!.Value, 3);   // 8 из 10
     }

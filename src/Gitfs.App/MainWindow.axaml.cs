@@ -286,7 +286,12 @@ public partial class MainWindow : Window
         Row("listings", $"{stats.ListingHits} hit / {stats.ListingMisses} miss");
         Row("paths", $"{stats.PathHits} hit / {stats.PathMisses} miss");
         Row("tree memory", $"{Bytes(stats.TreeBytes)} of {Bytes(stats.TreeBudget)}");
-        Row("deltas", $"{stats.DeltaHits} hit · {stats.Packs} pack" + (stats.Packs == 1 ? "" : "s"));
+        Row("objects", $"{stats.PackedObjects:N0} packed · {stats.Packs} pack" + (stats.Packs == 1 ? "" : "s"));
+        Row("deltas", $"{stats.DeltaHits} hit");
+        // Переоткрытия — единственный показатель деградации, обещанный
+        // макетом. Ноль пишется словом: «0» в столбце цифр читается как
+        // «счётчик сломан», а не «этого не случалось».
+        Row("reopens", stats.Reopens == 0 ? "none" : stats.Reopens.ToString());
         Row("sandbox", stats.OverlayFiles == 0
             ? "nothing written"
             : $"{stats.OverlayFiles} file{(stats.OverlayFiles == 1 ? "" : "s")} · {Bytes(stats.OverlayBytes)}");

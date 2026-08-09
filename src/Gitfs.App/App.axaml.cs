@@ -100,7 +100,8 @@ public partial class App : Application
         try { checks = MountService.Diagnose(null); }
         catch (Exception e) { Program.Log("tray-doctor", e); checks = []; }
 
-        var state = TrayBadge.StateOf(mounts.Count, checks);
+        var degraded = mounts.Any(m => m.Health != MountHealth.Ok);
+        var state = TrayBadge.StateOf(mounts.Count, checks, degraded);
         try
         {
             icons[0].Icon = new WindowIcon(
@@ -116,6 +117,11 @@ public partial class App : Application
         icons[0].ToolTipText = state switch
         {
             TrayState.Error => "gitfs — " + FirstProblem(checks, Gitfs.Diagnostics.CheckStatus.Fail),
+            // Деградация тома — раньше в подсказке: она конкретнее, чем
+            // предупреждение окружения, и именно из-за неё горит треугольник.
+            TrayState.Degraded when degraded =>
+                "gitfs — " + string.Join(", ", mounts.Where(m => m.Health != MountHealth.Ok)
+                    .Select(m => $"{m.MountPoint}: packs reopened {m.Reopens}×")),
             TrayState.Degraded => "gitfs — " + FirstProblem(checks, Gitfs.Diagnostics.CheckStatus.Warn),
             TrayState.Idle => "gitfs — nothing mounted",
             _ => $"gitfs — {mounts.Count} mounted: " +
@@ -181,7 +187,8 @@ public partial class App : Application
                 {
                     Command = new Command(() => Unmount(mount)),
                 });
-                menu.Add(new NativeMenuItem($"{mount.MountPoint}  {mount.Repository}")
+                var dot = mount.Health == MountHealth.Ok ? "" : "  ▲ " + mount.HealthWord;
+                menu.Add(new NativeMenuItem($"{mount.MountPoint}  {mount.Repository}{dot}")
                 {
                     Menu = submenu,
                     // Клик по самому монтированию открывает Проводник —

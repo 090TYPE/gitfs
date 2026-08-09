@@ -35,11 +35,18 @@ public class TrayBadgeTests
         Assert.Equal(TrayState.Error, TrayBadge.StateOf(3, checks));
     }
 
+    /// <summary>Предупреждение окружения показывается, только когда томов
+    /// нет. ЭТО ИЗМЕНЕНИЕ КОНТРАКТА, и намеренное: раньше «диск почти полон»
+    /// гасило три исправных тома в треугольник, хотя к ним не относилось.
+    /// Бриф §4.1 называет деградацией состояние САМОГО ТОМА — переоткрытие
+    /// пакетов, — и оно приходит отдельным признаком (см. MountHealthTests).
+    /// Отказ по-прежнему важнее всего.</summary>
     [Fact]
-    public void A_warning_outranks_the_mount_count_too_but_yields_to_a_failure()
+    public void An_environment_warning_speaks_when_no_volume_can_speak_for_itself()
     {
         var warn = new[] { new Check(CheckStatus.Warn, "disk", "97% full") };
-        Assert.Equal(TrayState.Degraded, TrayBadge.StateOf(2, warn));
+        Assert.Equal(TrayState.Degraded, TrayBadge.StateOf(0, warn));
+        Assert.Equal(TrayState.Mounted, TrayBadge.StateOf(2, warn));
 
         var both = new[]
         {

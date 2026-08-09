@@ -54,6 +54,9 @@ public sealed class PackFile : IDisposable
 
     public bool Contains(in ObjectId id) => _index.TryFindOffset(id, out _);
 
+    /// <summary>Сколько объектов в этом пакете — из заголовка .idx.</summary>
+    public int ObjectCount => _index.Count;
+
     /// <summary>Все OID пакета в порядке .idx (отсортированы).</summary>
     public IEnumerable<ObjectId> ObjectIds => _index.ObjectIds;
 

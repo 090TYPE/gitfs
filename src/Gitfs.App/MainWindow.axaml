@@ -38,20 +38,28 @@
             <ListBox.ItemTemplate>
               <DataTemplate DataType="app:MountEntry">
                 <Border Classes="card" Margin="0,0,0,8">
-                  <Grid ColumnDefinitions="Auto,*,Auto,Auto">
-                    <Ellipse Grid.Column="0" Width="8" Height="8" Fill="{DynamicResource GfsOkBrush}"
-                             VerticalAlignment="Center" Margin="0,0,12,0" />
-                    <StackPanel Grid.Column="1" Spacing="2">
+                  <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto">
+                    <!-- Состояние тома читается ЦВЕТОМ И СЛОВОМ. Один кружок,
+                         всегда зелёный, показать «reopening» не мог вовсе, а
+                         состояние, различимое только по оттенку, молчит для
+                         тех, кто этот оттенок не различает. -->
+                    <Ellipse Grid.Column="0" Width="8" Height="8"
+                             Fill="{Binding Health, Converter={x:Static app:HealthBrush.Instance}}"
+                             VerticalAlignment="Center" Margin="0,0,8,0" />
+                    <TextBlock Grid.Column="1" Text="{Binding HealthWord}" FontSize="11"
+                               Width="66" VerticalAlignment="Center" Margin="0,0,10,0"
+                               Foreground="{Binding Health, Converter={x:Static app:HealthBrush.Instance}}" />
+                    <StackPanel Grid.Column="2" Spacing="2">
                       <TextBlock Text="{Binding Repository}" Classes="mono" FontSize="14" />
                       <TextBlock Text="{Binding Path}" Classes="muted" FontSize="11" />
                     </StackPanel>
-                    <StackPanel Grid.Column="2" Spacing="2" Margin="12,0">
+                    <StackPanel Grid.Column="3" Spacing="2" Margin="12,0">
                       <TextBlock Text="{Binding MountPoint}" Classes="mono" FontSize="14"
                                  HorizontalAlignment="Right" />
                       <TextBlock Text="{Binding Views}" Classes="muted" FontSize="11"
                                  HorizontalAlignment="Right" />
                     </StackPanel>
-                    <TextBlock Grid.Column="3" Text="{Binding Uptime}" Classes="muted"
+                    <TextBlock Grid.Column="4" Text="{Binding Uptime}" Classes="muted"
                                VerticalAlignment="Center" Width="60"
                                TextAlignment="Right" />
                   </Grid>

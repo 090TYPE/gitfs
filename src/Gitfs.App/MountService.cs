@@ -11,9 +11,25 @@ using Gitfs.Mount.Fuse;
 
 namespace Gitfs.App;
 
+/// <summary>Состояние тома (макет 02/03). «reopening» — не выдумка ради
+/// цветного кружка: репозиторий пересобрался под смонтированным томом, и
+/// объекты пришлось открыть заново. Именно это бриф §4.1 называет
+/// деградацией — и считается она по журналу тома, а не по посторонним
+/// предупреждениям окружения.</summary>
+public enum MountHealth { Ok, Reopening }
+
 public sealed record MountEntry(string Repository, string Path, string MountPoint,
     string Views, DateTimeOffset Since)
 {
+    /// <summary>Пересчитывается службой при каждом чтении списка, а не
+    /// хранится: том живёт часами, и состояние, снятое в момент
+    /// монтирования, к вечеру не значит ничего.</summary>
+    public MountHealth Health { get; init; } = MountHealth.Ok;
+
+    public int Reopens { get; init; }
+
+    public string HealthWord => Health == MountHealth.Ok ? "ok" : "reopening";
+
     public string Uptime
     {
         get
@@ -61,7 +77,7 @@ public sealed class MountService
         long TreeHits, long TreeMisses, long TreeBytes, long TreeBudget,
         long ListingHits, long ListingMisses,
         long PathHits, long PathMisses,
-        long DeltaHits, long SizeHits, int Packs,
+        long DeltaHits, long SizeHits, int Packs, long PackedObjects, int Reopens,
         int OverlayFiles, long OverlayBytes)
     {
         /// <summary>Доля попаданий по всем кэшам вместе. Ноль обращений — не
@@ -94,7 +110,8 @@ public sealed class MountService
                 snapshot.ListingCache.Hits, snapshot.ListingCache.Misses,
                 snapshot.PathCache.Hits, snapshot.PathCache.Misses,
                 snapshot.Objects.DeltaBaseCacheHits, snapshot.Objects.SizeCacheHits,
-                snapshot.Objects.PackCount,
+                snapshot.Objects.PackCount, snapshot.Objects.PackedObjectCount,
+                live.Log?.Reopens ?? 0,
                 live.Overlay.Entries.Count, live.Overlay.TotalBytes);
         }
         catch (Exception)
@@ -105,9 +122,27 @@ public sealed class MountService
         }
     }
 
+    /// <summary>Список монтирований с ЖИВЫМ состоянием каждого: переоткрытия
+    /// пакетов считает журнал тома, и таблица обязана показывать сегодняшнее
+    /// число, а не то, что было в момент монтирования.</summary>
     public IReadOnlyList<MountEntry> Entries
     {
-        get { lock (_gate) return _entries.ToList(); }
+        get
+        {
+            lock (_gate)
+            {
+                return _entries.Select(entry =>
+                {
+                    if (!_live.TryGetValue(entry.MountPoint, out var live) || live.Log is not { } log)
+                        return entry;
+                    return entry with
+                    {
+                        Reopens = log.Reopens,
+                        Health = log.Reopens > 0 ? MountHealth.Reopening : MountHealth.Ok,
+                    };
+                }).ToList();
+            }
+        }
     }
 
 #if GITFS_WINFSP

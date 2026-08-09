@@ -50,14 +50,24 @@ public static class TrayBadge
     /// отказ и предупреждение берутся у doctor, число — у монтирований.
     /// Придумывать «деградацию» из ничего нельзя: значок, который загорается
     /// без причины, перестают замечать.</summary>
-    public static TrayState StateOf(int mounts, IEnumerable<Gitfs.Diagnostics.Check> checks)
+    public static TrayState StateOf(int mounts, IEnumerable<Gitfs.Diagnostics.Check> checks,
+        bool anyDegraded = false)
     {
         var worst = Gitfs.Diagnostics.CheckStatus.Ok;
         foreach (var check in checks)
             if (check.Status > worst) worst = check.Status;
 
+        // Отказ окружения важнее всего: смонтировано три, но драйвера нет —
+        // человек должен увидеть крест, а не спокойную тройку.
         if (worst == Gitfs.Diagnostics.CheckStatus.Fail) return TrayState.Error;
-        if (worst == Gitfs.Diagnostics.CheckStatus.Warn) return TrayState.Degraded;
+
+        // Деградация — это СОСТОЯНИЕ ТОМА: переоткрытие пакетов, осиротевшая
+        // песочница (бриф §4.1). Раньше треугольник зажигало любое
+        // предупреждение doctor — например «диск почти полон», к томам
+        // отношения не имеющее. Значок, загорающийся не по делу, перестают
+        // замечать, и он не срабатывает тогда, когда нужен.
+        if (anyDegraded) return TrayState.Degraded;
+        if (mounts == 0 && worst == Gitfs.Diagnostics.CheckStatus.Warn) return TrayState.Degraded;
         return mounts > 0 ? TrayState.Mounted : TrayState.Idle;
     }
 
