@@ -293,8 +293,11 @@ public sealed class OverlayStore : IDisposable
     /// живое от брошенного — здесь к нему добавляется, что именно живо.</summary>
     public const string DescriptorName = "mount.txt";
 
+    /// <param name="ProcessId">Кто держит том. Без этого `gitfs unmount` умел
+    /// только отказать: «том принадлежит тому процессу, нажмите там Ctrl+C» —
+    /// верно и совершенно бесполезно, когда окна того процесса уже нет.</param>
     public sealed record MountDescriptor(string Repository, string MountPoint, string Views,
-        DateTimeOffset Since, string Root);
+        DateTimeOffset Since, string Root, int ProcessId);
 
     /// <summary>Записывает описание тома. Формат — «ключ = значение» по
     /// строке: файл лежит в профиле пользователя, и его читают глазами не
@@ -309,6 +312,7 @@ public sealed class OverlayStore : IDisposable
                 "repository = " + repository,
                 "mount = " + mountPoint,
                 "views = " + views,
+                "pid = " + Environment.ProcessId,
                 "since = " + since.ToString("O"),
             });
         }
@@ -332,6 +336,7 @@ public sealed class OverlayStore : IDisposable
             {
                 string repo = "", mount = "", views = "";
                 var since = DateTimeOffset.MinValue;
+                var pid = 0;
                 foreach (var line in File.ReadLines(file))
                 {
                     var parts = line.Split('=', 2);
@@ -342,13 +347,15 @@ public sealed class OverlayStore : IDisposable
                         case "repository": repo = value; break;
                         case "mount": mount = value; break;
                         case "views": views = value; break;
+                        case "pid": int.TryParse(value, out pid); break;
                         case "since":
                             DateTimeOffset.TryParse(value, null,
                                 System.Globalization.DateTimeStyles.RoundtripKind, out since);
                             break;
                     }
                 }
-                if (mount.Length > 0) live.Add(new MountDescriptor(repo, mount, views, since, dir));
+                if (mount.Length > 0)
+                    live.Add(new MountDescriptor(repo, mount, views, since, dir, pid));
             }
             catch (IOException) { }
             catch (UnauthorizedAccessException) { }

@@ -26,6 +26,7 @@ public static class Doctor
         var checks = new List<Check> { CheckDriver(), CheckGit() };
         if (OperatingSystem.IsWindows()) checks.Add(CheckDriveLetters());
         if (repoPath is not null) checks.AddRange(CheckRepository(repoPath));
+        checks.Add(CheckMountedVolumes());
         checks.Add(CheckOverlays());
         return checks;
     }
@@ -181,6 +182,91 @@ public static class Doctor
             ? new Check(CheckStatus.Ok, "accelerators", string.Join(" + ", accel))
             : new Check(CheckStatus.Warn, "accelerators", "none",
                 "run git commit-graph write --reachable to speed up dates/ and history/");
+
+        yield return CheckLfs(repoPath, gitDir);
+    }
+
+    /// <summary>Git LFS (спека §3.5 и §13). Pointer-файл отдаётся КАК ЕСТЬ,
+    /// без гидрации: gitfs не ходит в сеть и не запускает фильтры. Молчать об
+    /// этом нельзя — человек откроет на томе .psd и увидит три строки текста,
+    /// решив, что сломан gitfs, а не что файл лежит в LFS.
+    ///
+    /// Спрашиваем .gitattributes рабочего дерева: именно он говорит, какие
+    /// пути отданы фильтру lfs. Читать сами блобы ради этого не нужно.</summary>
+    private static Check CheckLfs(string repoPath, string gitDir)
+    {
+        var attributes = Path.Combine(repoPath, ".gitattributes");
+        var tracked = new List<string>();
+        try
+        {
+            if (File.Exists(attributes))
+            {
+                foreach (var line in File.ReadLines(attributes))
+                {
+                    var text = line.Trim();
+                    if (text.Length == 0 || text[0] == '#') continue;
+                    if (!text.Contains("filter=lfs", StringComparison.OrdinalIgnoreCase)) continue;
+                    var pattern = text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)[0];
+                    if (tracked.Count < 4) tracked.Add(pattern);
+                    else if (tracked.Count == 4) tracked.Add("…");
+                }
+            }
+        }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
+
+        if (tracked.Count == 0)
+        {
+            // Нет .gitattributes — но LFS мог быть настроен и раньше; тогда в
+            // .git остаётся его каталог. Об этом стоит сказать мягче.
+            return Directory.Exists(Path.Combine(gitDir, "lfs"))
+                ? new Check(CheckStatus.Warn, "git lfs", "used by this repository",
+                    "gitfs serves pointer files as they are, without downloading the content",
+                    "docs.gitfs.dev/e/lfs")
+                : new Check(CheckStatus.Ok, "git lfs", "not used");
+        }
+
+        return new Check(CheckStatus.Warn, "git lfs", string.Join(" ", tracked),
+            "those paths appear on the volume as pointer files, not as their content",
+            "docs.gitfs.dev/e/lfs");
+    }
+
+    /// <summary>Что gitfs держит ПРЯМО СЕЙЧАС (макет 04: строки driver/cache/
+    /// packs). Раньше doctor отвечал только на вопрос «смогу ли я
+    /// смонтировать» и ни слова не говорил о том, что уже смонтировано, —
+    /// а половина обращений к диагностике случается именно тогда, когда том
+    /// уже работает и ведёт себя странно.
+    ///
+    /// Переоткрытие пакетов — предупреждение, а не отказ: том жив, просто
+    /// репозиторий пересобрался под ним.</summary>
+    private static Check CheckMountedVolumes()
+    {
+        var live = Vfs.Overlay.OverlayStore.FindLive();
+        if (live.Count == 0) return new Check(CheckStatus.Ok, "volumes", "none mounted");
+
+        var names = string.Join(" ", live.Select(m => m.MountPoint));
+        // Переоткрытия видно из журнала тома: он лежит на самом томе, и
+        // читать его — то же самое, что открыть .gitfs/log.txt глазами.
+        var reopening = new List<string>();
+        foreach (var mount in live)
+        {
+            try
+            {
+                var log = Path.Combine(mount.MountPoint, ".gitfs", "log.txt");
+                if (!File.Exists(log)) continue;
+                if (File.ReadLines(log).Any(l => l.Contains("pack-reopened", StringComparison.Ordinal)))
+                    reopening.Add(mount.MountPoint);
+            }
+            catch (IOException) { }              // том мог сниматься прямо сейчас
+            catch (UnauthorizedAccessException) { }
+        }
+
+        return reopening.Count == 0
+            ? new Check(CheckStatus.Ok, "volumes", $"{live.Count} mounted: {names}")
+            : new Check(CheckStatus.Warn, "volumes",
+                $"packs reopened on {string.Join(" ", reopening)}",
+                "safe to keep working; git gc under a mounted volume causes this",
+                "docs.gitfs.dev/e/pack-reopened");
     }
 
     /// <summary>Осиротевшие песочницы спрашиваем у самой песочницы: свой

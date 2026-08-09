@@ -9,25 +9,13 @@ public static class Report
 {
     private const int NameColumn = 22;
 
-    public static bool ColorEnabled { get; set; } = DetectColor();
-
-    private static bool DetectColor()
+    /// <summary>Совместимость: решение о цвете теперь общее для всего CLI и
+    /// живёт в <see cref="Ansi"/>. Здесь остаётся переключатель, потому что
+    /// им пользуются тесты.</summary>
+    public static bool ColorEnabled
     {
-        if (Environment.GetEnvironmentVariable("NO_COLOR") is not null) return false;
-        if (Console.IsOutputRedirected) return false;
-        return true;
-    }
-
-    private static string Paint(string text, CheckStatus status)
-    {
-        if (!ColorEnabled) return text;
-        var code = status switch
-        {
-            CheckStatus.Ok => "32",
-            CheckStatus.Warn => "33",
-            _ => "31",
-        };
-        return $"[{code}m{text}[0m";
+        get => Ansi.Enabled;
+        set { Ansi.Enabled = value; Ansi.EnabledForError = value; }
     }
 
     private static string Word(CheckStatus s) => s switch
@@ -42,17 +30,19 @@ public static class Report
         var sb = new StringBuilder();
         foreach (var c in checks)
         {
-            sb.Append(Paint(Word(c.Status), c.Status)).Append(' ');
+            sb.Append(Ansi.For(c.Status, Word(c.Status))).Append(' ');
             sb.Append(c.Name.PadRight(NameColumn)).Append(' ');
             sb.AppendLine(c.Value);
-            if (c.Fix is not null) sb.Append("     → ").AppendLine(c.Fix);
-            if (c.Link is not null) sb.Append("       ").AppendLine(c.Link);
+            // Пояснение приглушено: это подсказка к главному, а не главное.
+            if (c.Fix is not null) sb.AppendLine(Ansi.Dim("     → " + c.Fix));
+            if (c.Link is not null) sb.AppendLine(Ansi.Dim("       " + c.Link));
         }
         var ok = checks.Count(c => c.Status == CheckStatus.Ok);
         var warn = checks.Count(c => c.Status == CheckStatus.Warn);
         var fail = checks.Count(c => c.Status == CheckStatus.Fail);
         sb.AppendLine();
-        sb.AppendLine($"{ok} ok · {warn} warning{(warn == 1 ? "" : "s")} · {fail} failure{(fail == 1 ? "" : "s")}");
+        sb.AppendLine(Ansi.Dim(
+            $"{ok} ok · {warn} warning{(warn == 1 ? "" : "s")} · {fail} failure{(fail == 1 ? "" : "s")}"));
         return sb.ToString();
     }
 

@@ -1,4 +1,5 @@
 
+using Gitfs.Cli;
 using Gitfs.Diagnostics;
 using Gitfs.Core;
 using Gitfs.Vfs;
@@ -26,14 +27,27 @@ try
         "cat" => Cat(args.Skip(1).ToArray()),
         "list" => List(),
         "mount" => Mount(args.Skip(1).ToArray()),
-        "unmount" => Unmount(),
+        "unmount" => Unmount(args.Skip(1).ToArray()),
         "purge" => Purge(),
         _ => Unknown(args[0]),
     };
 }
 catch (Exception e)
 {
-    Console.Error.WriteLine($"fail {e.Message}");
+    Console.Error.WriteLine(Ansi.ErrStream(CheckStatus.Fail, "fail ") + e.Message);
+    return 1;
+}
+
+
+/// <summary>Ошибка одним вызовом: строка «что случилось» и, если он есть,
+/// рецепт «→ как починить». Раньше половина ошибок печаталась без рецепта —
+/// формат брифа §3 соблюдался там, где о нём вспомнили, а вспомнили не
+/// везде. Здесь его нельзя забыть: он в сигнатуре.</summary>
+static int Fail(string what, params string[] fixes)
+{
+    Console.Error.WriteLine(Ansi.ErrStream(CheckStatus.Fail, "fail ") + what);
+    foreach (var fix in fixes)
+        Console.Error.WriteLine(Ansi.DimErr("     → " + fix));
     return 1;
 }
 
@@ -47,6 +61,7 @@ static void PrintUsage()
           gitfs cat <repo> <path>      print a file from the virtual tree
           gitfs mount <repo> <target>  mount a repository (Ctrl+C unmounts)
           gitfs list                   list every volume gitfs is holding
+          gitfs unmount <target>       release a volume gitfs is holding
           gitfs purge                  remove overlays left by crashed runs
 
         Views: branches, tags, commits, dates, history.
@@ -103,7 +118,8 @@ static MountOptions? ParseOptions(IEnumerable<string> flags)
         bool Number(out int value)
         {
             if (int.TryParse(raw, out value)) return true;
-            Console.Error.WriteLine($"fail {key} needs a number, got '{raw}'");
+            Fail($"{key} needs a number, got '{raw}'",
+                "give it a whole number, for example " + key + "=200");
             return false;
         }
 
@@ -137,7 +153,8 @@ static MountOptions? ParseOptions(IEnumerable<string> flags)
             case "--history-ref":
                 if (string.IsNullOrWhiteSpace(raw))
                 {
-                    Console.Error.WriteLine("fail --history-ref needs a ref or a sha");
+                    Fail("--history-ref needs a ref or a sha",
+                        "for example --history-ref=v1.0 or --history-ref=main");
                     return null;
                 }
                 options = options with { HistoryRef = raw }; break;
@@ -162,7 +179,7 @@ static MountOptions? ParseOptions(IEnumerable<string> flags)
 
     if (options.Validate() is { } problem)
     {
-        Console.Error.WriteLine($"fail {problem}");
+        Fail(problem, "gitfs --help lists what each option accepts");
         return null;
     }
     return options;
@@ -188,8 +205,8 @@ static int Tree(string[] rest)
 
     if (rest.Length == 0)
     {
-        Console.Error.WriteLine("fail gitfs tree needs a repository path");
-        return 1;
+        return Fail("gitfs tree needs a repository path",
+            "for example: gitfs tree . history");
     }
     var gitDir = Doctor.ResolveGitDir(Path.GetFullPath(rest[0]));
     if (gitDir is null)
@@ -206,8 +223,8 @@ static int Tree(string[] rest)
     var node = tree.Resolve(snapshot, path);
     if (node is null)
     {
-        Console.Error.WriteLine($"fail no such path: {path}");
-        return 1;
+        return Fail($"no such path: {path}",
+            "gitfs tree <repo> lists what the root holds");
     }
     if (node.Value.Kind != NodeKind.Directory)
     {
@@ -236,8 +253,8 @@ static int Cat(string[] rest)
     var gitDir = Doctor.ResolveGitDir(Path.GetFullPath(rest[0]));
     if (gitDir is null)
     {
-        Console.Error.WriteLine($"fail no .git directory in {rest[0]}");
-        return 1;
+        return Fail($"no .git directory in {rest[0]}",
+            "point gitfs at a repository root");
     }
 
     var manager = new SnapshotManager(gitDir);
@@ -247,14 +264,15 @@ static int Cat(string[] rest)
     var opened = target.Open(rest[1], OpenMode.Read);
     if (!opened.TryGet(out var handle))
     {
-        Console.Error.WriteLine($"fail cannot open {rest[1]}: {opened.Error}");
+        Fail($"cannot open {rest[1]}: {opened.Error}",
+            "gitfs tree <repo> <path> shows what is there");
         return 1;
     }
     try
     {
         if (handle.IsDirectory)
         {
-            Console.Error.WriteLine($"fail {rest[1]} is a directory");
+            Fail($"{rest[1]} is a directory", "gitfs cat prints files; use gitfs tree for folders");
             return 1;
         }
         var buffer = new byte[64 * 1024];
@@ -265,8 +283,8 @@ static int Cat(string[] rest)
             var read = target.Read(handle, offset, buffer);
             if (!read.TryGet(out var count))
             {
-                Console.Error.WriteLine($"fail read failed: {read.Error}");
-                return 1;
+                return Fail($"read failed: {read.Error}",
+                    "the object may be corrupt; git fsck says for sure");
             }
             if (count == 0) break;
             stdout.Write(buffer, 0, count);
@@ -286,10 +304,10 @@ static int Cat(string[] rest)
 static int List()
 {
     var live = OverlayStore.FindLive();
-    Console.WriteLine($"{"REPOSITORY",-18}{"MOUNT",-12}{"VIEWS",-14}UPTIME");
+    Console.WriteLine(Ansi.Accent($"{"REPOSITORY",-18}{"MOUNT",-12}{"VIEWS",-14}UPTIME"));
     if (live.Count == 0)
     {
-        Console.WriteLine("(nothing mounted)");
+        Console.WriteLine(Ansi.Dim("(nothing mounted)"));
     }
     foreach (var mount in live)
     {
@@ -305,7 +323,7 @@ static int List()
     {
         Console.WriteLine();
         Console.WriteLine($"{orphans.Count} orphaned overlay(s) from earlier runs:");
-        foreach (var dir in orphans) Console.WriteLine($"  {dir}");
+        foreach (var dir in orphans) Console.WriteLine(Ansi.Dim("  " + dir));
     }
     return 0;
 }
@@ -377,7 +395,7 @@ static int Mount(string[] rest)
 #endif
         var elapsed = (DateTime.UtcNow - started).TotalSeconds;
         var mode = options.ReadOnly ? "read-only" : "writable";
-        Console.WriteLine($"mounted {mountPoint} · {name} · {options.Views.Count} view" +
+        Console.WriteLine(Ansi.Ok("mounted ") + $"{mountPoint} · {name} · {options.Views.Count} view" +
                           (options.Views.Count == 1 ? "" : "s") + $" · {mode} · {elapsed:0.0}s");
         if (options.KeepOverlay)
             Console.WriteLine($"overlay kept at {overlay.Root}");
@@ -436,7 +454,7 @@ static int Mount(string[] rest)
         // приклеивалось «поставьте WinFsp» — и на «1: это не буква диска»
         // пользователь получал предложение переустановить драйвер, то есть
         // ложный след вместо подсказки.
-        Console.Error.WriteLine($"fail {e.Message}");
+        Fail(e.Message, "gitfs doctor checks the environment first");
         if (e.Message.Contains("WinFsp", StringComparison.OrdinalIgnoreCase))
             Console.Error.WriteLine($"     → install it from {Doctor.WinFspDownload} and run gitfs doctor again");
         return 1;
@@ -444,8 +462,8 @@ static int Mount(string[] rest)
 #else
     catch (FuseMountException e)
     {
-        Console.Error.WriteLine($"fail {e.Message}");
-        return 1;
+        return Fail(e.Message,
+            "gitfs doctor checks libfuse3, /dev/fuse and fusermount3");
     }
 #endif
 #endif
@@ -454,16 +472,110 @@ static int Mount(string[] rest)
 /// <summary>Том живёт внутри процесса `gitfs mount`, поэтому снимает его
 /// Ctrl+C в том окне — отдельной команде снимать нечего. Говорим это прямо,
 /// а не «nothing is mounted» без объяснения.</summary>
-static int Unmount()
+/// <summary>Снимает том по точке монтирования.
+///
+/// Раньше у команды была ОДНА ветка — отказ: «том принадлежит тому процессу,
+/// нажмите там Ctrl+C». Верно и совершенно бесполезно, когда окна того
+/// процесса уже нет: единственным выходом оставался диспетчер задач.
+///
+/// Теперь рядом с замком песочницы записан её владелец, и снятие — это
+/// вежливая просьба ему завершиться: тот же путь, что и Ctrl+C, со всей уже
+/// написанной уборкой (том снимается, песочница удаляется). Убивать жёстко
+/// нельзя — останется и точка монтирования, и каталог.</summary>
+static int Unmount(string[] rest)
 {
-    var mine = OverlayStore.FindOrphans().Count;
-    Console.Error.WriteLine("fail this process holds no mounts");
-    Console.Error.WriteLine("     → a volume belongs to the gitfs mount that created it:");
-    Console.Error.WriteLine("       press Ctrl+C in that window, or quit it from the app");
-    if (mine > 0)
-        Console.Error.WriteLine($"     → {mine} abandoned overlay(s) can be removed with gitfs purge");
-    return 1;
+    var live = OverlayStore.FindLive();
+    if (rest.Length == 0)
+    {
+        if (live.Count == 0)
+        {
+            Console.Error.WriteLine("fail nothing is mounted");
+            Console.Error.WriteLine("     → gitfs list shows what gitfs is holding");
+            return 1;
+        }
+        Console.Error.WriteLine("fail gitfs unmount needs a mount point");
+        Console.Error.WriteLine("     → " + string.Join(", ", live.Select(m => m.MountPoint)));
+        return 1;
+    }
+
+    var wanted = rest[0].TrimEnd('\\', '/');
+    var target = live.FirstOrDefault(m =>
+        string.Equals(m.MountPoint.TrimEnd('\\', '/'), wanted, StringComparison.OrdinalIgnoreCase));
+    if (target is null)
+    {
+        Console.Error.WriteLine($"fail gitfs is not holding {rest[0]}");
+        Console.Error.WriteLine(live.Count == 0
+            ? "     → nothing is mounted right now"
+            : "     → mounted: " + string.Join(", ", live.Select(m => m.MountPoint)));
+        return 1;
+    }
+    if (target.ProcessId <= 0)
+    {
+        Console.Error.WriteLine($"fail {target.MountPoint} does not say which process holds it");
+        Console.Error.WriteLine("     → it was mounted by an older gitfs; press Ctrl+C in that window");
+        return 1;
+    }
+
+    try
+    {
+        using var owner = System.Diagnostics.Process.GetProcessById(target.ProcessId);
+        // На Linux — SIGTERM, тот же сигнал, что уже умеет обрабатывать
+        // сам mount: он снимает том и удаляет песочницу. Kill() в .NET —
+        // это SIGKILL, после которого не отрабатывает ничего.
+        //
+        // На Windows сигналов нет, и Kill() — единственный способ; WinFsp
+        // отпускает том вместе с процессом, а песочницу убираем ниже сами.
+        if (OperatingSystem.IsLinux() && Interop.Kill(target.ProcessId, 15) != 0)
+        {
+            Fail($"could not signal pid {target.ProcessId}",
+                "it may belong to another user; try from that session");
+            return 1;
+        }
+        if (!OperatingSystem.IsLinux()) owner.Kill(entireProcessTree: false);
+
+        // Ждём НАСТОЯЩЕГО снятия, а не отправки сигнала: сказать «снято» и
+        // оставить точку монтирования висеть — худший исход из возможных.
+        owner.WaitForExit(15_000);
+        if (!owner.HasExited)
+        {
+            Console.Error.WriteLine($"fail {target.MountPoint} is still held by pid {target.ProcessId}");
+            Console.Error.WriteLine("     → it did not finish in 15 s; look at gitfs list");
+            return 1;
+        }
+    }
+    catch (ArgumentException)
+    {
+        Console.Error.WriteLine($"fail pid {target.ProcessId} is gone but {target.MountPoint} is listed");
+        Console.Error.WriteLine("     → gitfs purge removes what it left behind");
+        return 1;
+    }
+    catch (Exception e)
+    {
+        Fail($"could not unmount {target.MountPoint}: {e.Message}",
+            "gitfs list shows what is still held");
+        return 1;
+    }
+
+    // Песочница на Windows остаётся: там процесс завершается жёстко и убрать
+    // её было некому. Замок теперь свободен, каталог опознаётся сиротой —
+    // удаляем ровно его, а не «все сироты», чтобы не задеть чужие тома.
+    if (Directory.Exists(target.Root))
+    {
+        try { Directory.Delete(target.Root, recursive: true); }
+        catch (IOException)
+        {
+            Console.Error.WriteLine($"     → sandbox left at {target.Root}; gitfs purge removes it");
+        }
+        catch (UnauthorizedAccessException)
+        {
+            Console.Error.WriteLine($"     → sandbox left at {target.Root}; gitfs purge removes it");
+        }
+    }
+
+    Console.WriteLine(Ansi.Ok("unmounted ") + target.MountPoint);
+    return 0;
 }
+
 
 /// <summary>Убирает песочницы, оставшиеся от аварийно завершённых процессов.
 /// Живые не трогает: владелец держит замок внутри своего каталога.</summary>
@@ -471,7 +583,9 @@ static int Purge()
 {
     var (removed, failed) = OverlayStore.PurgeOrphans();
     foreach (var dir in removed) Console.WriteLine($"removed {dir}");
-    foreach (var dir in failed) Console.Error.WriteLine($"fail could not remove {dir}");
+    foreach (var dir in failed)
+        Fail($"could not remove {dir}",
+            "something still has a file open there; close it and run gitfs purge again");
     if (removed.Count == 0 && failed.Count == 0) Console.WriteLine("overlay clean — nothing to purge");
     return failed.Count > 0 ? 1 : 0;
 }
