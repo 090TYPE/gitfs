@@ -258,6 +258,35 @@ wait "$mgr" 2>/dev/null
 fusermount3 -u "$HOME/mnt/gitfs" 2>/dev/null
 
 echo
+echo "=== both themes (бриф §7: обе обязательны) ==="
+# Бриф требует ОБЕ темы. Снимаются обе и сравниваются: если светлая на
+# самом деле не светлая, средняя яркость совпадёт с тёмной — и проверка
+# упадёт, а не отрапортует «нарисовалось».
+mkdir -p "$HOME/.local/share/gitfs"
+for theme in light dark; do
+    printf 'theme = %s\n' "$theme" > "$HOME/.local/share/gitfs/settings.txt"
+    /tmp/app/Gitfs.App > "/tmp/theme-$theme.log" 2>&1 &
+    tp=$!
+    for _ in $(seq 1 60); do window_titled 'gitfs' && break; sleep 0.5; done
+    sleep 2
+    import -display :99 -window root "$out/linux-theme-$theme.png" 2>/dev/null \
+        || xwd -display :99 -root | convert xwd:- "$out/linux-theme-$theme.png"
+    echo "ok    $theme theme rendered: $out/linux-theme-$theme.png"
+    kill -TERM "$tp" 2>/dev/null; wait "$tp" 2>/dev/null
+done
+rm -f "$HOME/.local/share/gitfs/settings.txt"
+
+light_mean="$(convert "$out/linux-theme-light.png" -colorspace Gray -format '%[fx:int(mean*255)]' info: 2>/dev/null || echo 0)"
+dark_mean="$(convert "$out/linux-theme-dark.png" -colorspace Gray -format '%[fx:int(mean*255)]' info: 2>/dev/null || echo 0)"
+echo "      средняя яркость: светлая $light_mean, тёмная $dark_mean"
+if [ "${light_mean:-0}" -gt $(( ${dark_mean:-0} + 20 )) ]; then
+    echo "ok    the light theme is actually lighter than the dark one"
+else
+    echo "fail the two themes render the same: light $light_mean vs dark $dark_mean"
+    status=1
+fi
+
+echo
 echo "=== the first-run screen ==="
 shoot_first_run healthy
 # Предупреждение, а не отказ: git пропадает из PATH. gitfs читает объекты

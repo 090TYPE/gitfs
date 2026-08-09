@@ -65,9 +65,9 @@ public partial class FirstRunWindow : Window
             {
                 ColumnDefinitions = new ColumnDefinitions("Auto,Auto,*"),
             };
-            row.Children.Add(Cell(Symbol(check.Status), 0, Colour(check.Status), bold: true));
-            row.Children.Add(Cell(check.Name, 1, "#e9e9ed", width: 90));
-            row.Children.Add(Cell(check.Value, 2, "#9397ab"));
+            row.Children.Add(Cell(Symbol(check.Status), 0, Palette.ForStatus(check.Status), bold: true));
+            row.Children.Add(Cell(check.Name, 1, Palette.Text, width: 90));
+            row.Children.Add(Cell(check.Value, 2, Palette.Muted));
             Rows.Children.Add(row);
         }
 
@@ -122,20 +122,13 @@ public partial class FirstRunWindow : Window
         _ => "✕",
     };
 
-    private static string Colour(CheckStatus status) => status switch
-    {
-        CheckStatus.Ok => "#7FB77E",
-        CheckStatus.Warn => "#E0B26D",
-        _ => "#E07B6D",
-    };
-
-    private static TextBlock Cell(string text, int column, string colour,
+private static TextBlock Cell(string text, int column, IBrush colour,
         bool bold = false, double? width = null)
     {
         var block = new TextBlock
         {
             Text = text,
-            Foreground = new SolidColorBrush(Color.Parse(colour)),
+            Foreground = colour,
             FontSize = 13,
             Margin = new Thickness(0, 0, 12, 0),
             FontWeight = bold ? FontWeight.Bold : FontWeight.Normal,

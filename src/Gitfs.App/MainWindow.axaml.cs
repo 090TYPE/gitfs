@@ -31,6 +31,10 @@ public partial class MainWindow : Window
 
     public void OpenMountDialog() => _ = MountAsync();
 
+    /// <summary>Показать диагностику окружения. Нужно пункту «Doctor» в меню
+    /// трея (бриф §4.2): проверить среду, не открывая окно самому.</summary>
+    public void OpenDoctor() => ShowEnvironment();
+
     public MainWindow()
     {
         InitializeComponent();
@@ -138,7 +142,7 @@ public partial class MainWindow : Window
             SidePanel.Children.Add(new TextBlock
             {
                 Text = "diagnostics failed: " + ex.Message,
-                Foreground = new SolidColorBrush(Color.Parse("#E07B6D")),
+                Foreground = Palette.Err,
                 FontSize = 12,
                 TextWrapping = TextWrapping.Wrap,
             });
@@ -152,7 +156,7 @@ public partial class MainWindow : Window
     private static TextBlock Muted(string text) => new()
     {
         Text = text,
-        Foreground = new SolidColorBrush(Color.Parse("#9397ab")),
+        Foreground = Palette.Muted,
         FontSize = 12,
     };
 
@@ -160,9 +164,9 @@ public partial class MainWindow : Window
     {
         var colour = check.Status switch
         {
-            CheckStatus.Ok => Color.Parse("#6FBF77"),
-            CheckStatus.Warn => Color.Parse("#E3B341"),
-            _ => Color.Parse("#E07B6D"),
+            CheckStatus.Ok => ((SolidColorBrush)Palette.Ok).Color,
+            CheckStatus.Warn => ((SolidColorBrush)Palette.Warn).Color,
+            _ => ((SolidColorBrush)Palette.Err).Color,
         };
         var word = check.Status switch
         {
@@ -184,14 +188,14 @@ public partial class MainWindow : Window
         head.Children.Add(new TextBlock
         {
             Text = check.Name,
-            Foreground = new SolidColorBrush(Color.Parse("#cfd3e5")),
+            Foreground = Palette.Text,
             FontSize = 12,
             Width = 96,
         });
         head.Children.Add(new TextBlock
         {
             Text = check.Value,
-            Foreground = new SolidColorBrush(Color.Parse("#9397ab")),
+            Foreground = Palette.Muted,
             FontSize = 12,
             TextWrapping = TextWrapping.Wrap,
             MaxWidth = 150,
@@ -204,7 +208,7 @@ public partial class MainWindow : Window
             panel.Children.Add(new TextBlock
             {
                 Text = "→ " + check.Fix,
-                Foreground = new SolidColorBrush(Color.Parse("#75798c")),
+                Foreground = Palette.Faint,
                 FontSize = 11,
                 TextWrapping = TextWrapping.Wrap,
                 Margin = new Avalonia.Thickness(42, 0, 0, 6),
@@ -226,13 +230,13 @@ public partial class MainWindow : Window
             row.Children.Add(new TextBlock
             {
                 Text = key,
-                Foreground = new SolidColorBrush(Color.Parse("#75798c")),
+                Foreground = Palette.Faint,
                 FontSize = 11, Width = 80,
             });
             row.Children.Add(new TextBlock
             {
                 Text = value,
-                Foreground = new SolidColorBrush(Color.Parse("#cfd3e5")),
+                Foreground = Palette.Text,
                 FontFamily = new FontFamily("Cascadia Mono, Consolas, monospace"),
                 FontSize = 12, TextWrapping = TextWrapping.Wrap, MaxWidth = 200,
             });
@@ -313,7 +317,7 @@ public partial class MainWindow : Window
             SidePanel.Children.Add(new TextBlock
             {
                 Text = line,
-                Foreground = new SolidColorBrush(Color.Parse("#9397ab")),
+                Foreground = Palette.Muted,
                 FontFamily = new FontFamily("Cascadia Mono, Consolas, monospace"),
                 FontSize = 10,
                 TextWrapping = TextWrapping.Wrap,

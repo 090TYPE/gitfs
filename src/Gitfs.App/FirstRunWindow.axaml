@@ -15,12 +15,12 @@
 
       <!-- Строки берутся у doctor: то же, что покажет gitfs doctor, а не
            отдельный список, который однажды разойдётся с настоящим. -->
-      <Border Background="#232532" CornerRadius="8" Padding="14">
+      <Border Background="{DynamicResource GfsSurfaceBrush}" CornerRadius="8" Padding="14">
         <StackPanel x:Name="Rows" Spacing="10" />
       </Border>
 
       <TextBlock x:Name="FixText" Classes="muted" TextWrapping="Wrap"
-                 Foreground="#E0B26D" IsVisible="False" />
+                 Foreground="{DynamicResource GfsWarnBrush}" IsVisible="False" />
 
       <StackPanel Orientation="Horizontal" Spacing="10">
         <Button x:Name="InstallAction" Classes="primary" Click="OnInstall"
@@ -33,7 +33,7 @@
       </StackPanel>
     </StackPanel>
 
-    <Border Grid.Row="1" Background="#13151f" Padding="20,14">
+    <Border Grid.Row="1" Background="{DynamicResource GfsFooterBrush}" Padding="20,14">
       <TextBlock x:Name="StepText" Classes="muted"
                  Text="Step 1 of 2 · next: mount your first repository" />
     </Border>

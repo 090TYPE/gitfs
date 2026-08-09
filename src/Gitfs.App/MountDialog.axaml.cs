@@ -101,8 +101,7 @@ public partial class MountDialog : Window
                 Margin = new Thickness(0, 6, 6, 0),
                 Padding = new Thickness(10, 3),
                 FontSize = 12,
-                Foreground = new SolidColorBrush(Color.Parse(
-                    entry.StillARepository ? "#cfd3e5" : "#7c8194")),
+                Foreground = entry.StillARepository ? Palette.Text : Palette.Faint,
             };
             ToolTip.SetTip(chip, entry.StillARepository
                 ? entry.Path
@@ -140,8 +139,7 @@ public partial class MountDialog : Window
                 Text = new string(' ', indent) + text,
                 FontFamily = new FontFamily("Cascadia Mono, Consolas, monospace"),
                 FontSize = 12,
-                Foreground = new SolidColorBrush(Color.Parse(
-                    !enabled ? "#595d6c" : accent ? "#d2cefd" : "#cfd3e5")),
+                Foreground = !enabled ? Palette.Strike : accent ? Palette.AccentInk : Palette.Text,
                 TextDecorations = enabled ? null : TextDecorations.Strikethrough,
             });
         }
@@ -170,8 +168,7 @@ public partial class MountDialog : Window
         var folderProblem = FolderBox.IsVisible ? MountFolderNote(MountPoint) : null;
         FolderNote.IsVisible = folderProblem is not null;
         FolderNote.Text = folderProblem?.Text;
-        FolderNote.Foreground = new SolidColorBrush(Color.Parse(
-            folderProblem is { Blocking: true } ? "#E07B6D" : "#9397ab"));
+        FolderNote.Foreground = folderProblem is { Blocking: true } ? Palette.Err : Palette.Muted;
 
         // Настройки проверяются здесь же: неверное число гасит кнопку и
         // называет причину, а не всплывает исключением после нажатия.

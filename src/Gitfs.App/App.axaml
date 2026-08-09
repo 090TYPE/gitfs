@@ -1,7 +1,6 @@
 <Application xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             x:Class="Gitfs.App.App"
-             RequestedThemeVariant="Dark">
+             x:Class="Gitfs.App.App">
 
   <!-- Трей: приложение живёт в фоне, пока смонтирован хотя бы один том -->
   <TrayIcon.Icons>
@@ -14,75 +13,83 @@
     </TrayIcons>
   </TrayIcon.Icons>
 
+  <Application.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.MergedDictionaries>
+        <ResourceInclude Source="avares://Gitfs.App/Theme.axaml" />
+      </ResourceDictionary.MergedDictionaries>
+    </ResourceDictionary>
+  </Application.Resources>
+
   <Application.Styles>
     <FluentTheme />
 
     <!-- Палитра Nocturne из макета дизайн-отдела -->
     <Style Selector="Window">
-      <Setter Property="Background" Value="#161826" />
-      <Setter Property="FontFamily" Value="Inter, Segoe UI, sans-serif" />
+      <Setter Property="Background" Value="{DynamicResource GfsBgBrush}" />
+      <Setter Property="FontFamily" Value="{DynamicResource GfsSans}" />
     </Style>
 
     <Style Selector="TextBlock.h1">
       <Setter Property="FontSize" Value="20" />
       <Setter Property="FontWeight" Value="Medium" />
-      <Setter Property="Foreground" Value="#e9e9ed" />
+      <Setter Property="Foreground" Value="{DynamicResource GfsTextBrush}" />
     </Style>
     <Style Selector="TextBlock.kicker">
       <Setter Property="FontSize" Value="10" />
-      <Setter Property="Foreground" Value="#9184d9" />
+      <Setter Property="Foreground" Value="{DynamicResource GfsAccentBrush}" />
       <Setter Property="LetterSpacing" Value="1.4" />
     </Style>
     <Style Selector="TextBlock.muted">
       <Setter Property="FontSize" Value="12" />
-      <Setter Property="Foreground" Value="#9397ab" />
+      <Setter Property="Foreground" Value="{DynamicResource GfsTextMutedBrush}" />
     </Style>
     <Style Selector="TextBlock.mono">
-      <Setter Property="FontFamily" Value="Cascadia Mono, Consolas, monospace" />
-      <Setter Property="Foreground" Value="#cfd3e5" />
+      <Setter Property="FontFamily" Value="{DynamicResource GfsMono}" />
+      <Setter Property="Foreground" Value="{DynamicResource GfsTextBrush}" />
     </Style>
 
     <Style Selector="Border.card">
-      <Setter Property="Background" Value="#232532" />
+      <Setter Property="Background" Value="{DynamicResource GfsSurfaceBrush}" />
       <Setter Property="CornerRadius" Value="8" />
       <Setter Property="Padding" Value="14" />
     </Style>
 
     <Style Selector="Button.primary">
       <Setter Property="Background" Value="Transparent" />
-      <Setter Property="BorderBrush" Value="#9184d9" />
+      <Setter Property="BorderBrush" Value="{DynamicResource GfsAccentBrush}" />
       <Setter Property="BorderThickness" Value="1" />
-      <Setter Property="Foreground" Value="#9184d9" />
+      <Setter Property="Foreground" Value="{DynamicResource GfsAccentBrush}" />
       <Setter Property="CornerRadius" Value="8" />
       <Setter Property="Padding" Value="14,7" />
     </Style>
     <Style Selector="Button.primary:pointerover /template/ ContentPresenter">
-      <Setter Property="Background" Value="#2b2741" />
-      <Setter Property="TextElement.Foreground" Value="#b5abfc" />
+      <Setter Property="Background" Value="{DynamicResource GfsAccentWashBrush}" />
+      <Setter Property="TextElement.Foreground" Value="{DynamicResource GfsAccentInkBrush}" />
     </Style>
     <Style Selector="Button.secondary">
       <Setter Property="Background" Value="Transparent" />
-      <Setter Property="BorderBrush" Value="#3f424d" />
+      <Setter Property="BorderBrush" Value="{DynamicResource GfsDividerBrush}" />
       <Setter Property="BorderThickness" Value="1" />
-      <Setter Property="Foreground" Value="#cfd3e5" />
+      <Setter Property="Foreground" Value="{DynamicResource GfsTextBrush}" />
       <Setter Property="CornerRadius" Value="8" />
       <Setter Property="Padding" Value="14,7" />
     </Style>
     <Style Selector="Button.secondary:pointerover /template/ ContentPresenter">
-      <Setter Property="Background" Value="#2b2d3a" />
+      <Setter Property="Background" Value="{DynamicResource GfsSurfaceDeepBrush}" />
     </Style>
 
     <Style Selector="TextBox">
-      <Setter Property="Background" Value="#232532" />
-      <Setter Property="BorderBrush" Value="#3f424d" />
-      <Setter Property="Foreground" Value="#e9e9ed" />
+      <Setter Property="Background" Value="{DynamicResource GfsSurfaceBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource GfsDividerBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource GfsTextBrush}" />
       <Setter Property="CornerRadius" Value="8" />
-      <Setter Property="FontFamily" Value="Cascadia Mono, Consolas, monospace" />
+      <Setter Property="FontFamily" Value="{DynamicResource GfsMono}" />
       <Setter Property="FontSize" Value="13" />
     </Style>
 
     <Style Selector="CheckBox">
-      <Setter Property="Foreground" Value="#cfd3e5" />
+      <Setter Property="Foreground" Value="{DynamicResource GfsTextBrush}" />
     </Style>
   </Application.Styles>
 </Application>

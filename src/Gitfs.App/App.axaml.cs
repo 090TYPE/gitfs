@@ -13,6 +13,10 @@ public partial class App : Application
 
     public override void OnFrameworkInitializationCompleted()
     {
+        // Тема — до создания окон: иначе первый кадр рисуется одной темой,
+        // а следующий другой, и это видно.
+        Settings.Apply(Settings.Theme);
+
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             // Единственный способ посмотреть на диалог автоматически: под
@@ -140,30 +144,82 @@ public partial class App : Application
             _main?.OpenMountDialog();
         }) });
 
-        if (mounts.Count > 0)
+        menu.Add(new NativeMenuItemSeparator());
+        if (mounts.Count == 0)
         {
-            menu.Add(new NativeMenuItemSeparator());
+            // Пустое состояние ЕСТЬ (макет 02): раздел, который просто
+            // исчезает, читается как «меню сломалось», а не «томов нет».
+            menu.Add(new NativeMenuItem("Nothing mounted") { IsEnabled = false });
+        }
+        else
+        {
             foreach (var mount in mounts)
             {
                 var submenu = new NativeMenu();
-                submenu.Add(new NativeMenuItem($"Unmount {mount.MountPoint}")
-                {
-                    Command = new Command(() => Unmount(mount)),
-                });
+                // Заголовок подменю — откуда этот том: в меню видна буква, а
+                // репозиториев у человека десятки (макет 02).
+                submenu.Add(new NativeMenuItem(mount.Path) { IsEnabled = false });
+                submenu.Add(new NativeMenuItemSeparator());
                 submenu.Add(new NativeMenuItem("Open in file manager")
                 {
                     Command = new Command(() => Reveal(mount.MountPoint)),
                 });
+                // «Показать лог» из брифа §4.2 — это .gitfs/log.txt самого
+                // тома: журнал лежит внутри продукта, и показывать надо его,
+                // а не отдельный файл где-то в профиле.
+                submenu.Add(new NativeMenuItem("Show log")
+                {
+                    Command = new Command(() => Reveal(
+                        System.IO.Path.Combine(mount.MountPoint, ".gitfs", "log.txt"))),
+                });
+                submenu.Add(new NativeMenuItem("Copy path")
+                {
+                    Command = new Command(() => CopyToClipboard(mount.MountPoint)),
+                });
+                submenu.Add(new NativeMenuItemSeparator());
+                submenu.Add(new NativeMenuItem($"Unmount {mount.MountPoint}")
+                {
+                    Command = new Command(() => Unmount(mount)),
+                });
                 menu.Add(new NativeMenuItem($"{mount.MountPoint}  {mount.Repository}")
                 {
                     Menu = submenu,
+                    // Клик по самому монтированию открывает Проводник —
+                    // подменю для действий, а не для того, чтобы попасть в том.
+                    Command = new Command(() => Reveal(mount.MountPoint)),
                 });
             }
         }
 
         menu.Add(new NativeMenuItemSeparator());
+        menu.Add(new NativeMenuItem("Doctor")
+        {
+            Command = new Command(() => { ShowMain(); _main?.OpenDoctor(); }),
+        });
+        menu.Add(new NativeMenuItem($"Theme: {Settings.Describe(Settings.Theme)}")
+        {
+            Command = new Command(() =>
+            {
+                Settings.Theme = Settings.Next(Settings.Theme);
+                RefreshTray();   // подпись пункта обязана догнать выбор
+            }),
+        });
+        menu.Add(new NativeMenuItemSeparator());
         menu.Add(new NativeMenuItem("Quit") { Command = new Command(Quit) });
         icon.Menu = menu;
+    }
+
+    private static void CopyToClipboard(string text)
+    {
+        try
+        {
+            if (Avalonia.Application.Current?.ApplicationLifetime
+                is IClassicDesktopStyleApplicationLifetime { MainWindow: { } window })
+            {
+                window.Clipboard?.SetTextAsync(text);
+            }
+        }
+        catch (Exception e) { Program.Log("clipboard", e); }
     }
 
     private void Unmount(MountEntry mount)

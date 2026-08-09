@@ -9,13 +9,13 @@
   <Grid RowDefinitions="Auto,*,Auto">
 
     <!-- шапка -->
-    <Border Grid.Row="0" Padding="18,14" Background="#1b1d2b">
+    <Border Grid.Row="0" Padding="18,14" Background="{DynamicResource GfsSurfaceDeepBrush}">
       <Grid ColumnDefinitions="Auto,*,Auto,Auto">
         <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
           <TextBlock Text="gitfs" FontFamily="Cascadia Mono, Consolas, monospace"
-                     FontSize="18" FontWeight="Medium" Foreground="#e9e9ed" />
-          <Border Background="#3f424d" CornerRadius="6" Padding="8,3" VerticalAlignment="Center">
-            <TextBlock x:Name="PlatformBadge" Text="windows" FontSize="11" Foreground="#e4e7f5" />
+                     FontSize="18" FontWeight="Medium" Foreground="{DynamicResource GfsTextBrush}" />
+          <Border Background="{DynamicResource GfsDividerBrush}" CornerRadius="6" Padding="8,3" VerticalAlignment="Center">
+            <TextBlock x:Name="PlatformBadge" Text="windows" FontSize="11" Foreground="{DynamicResource GfsTextBrush}" />
           </Border>
         </StackPanel>
         <Button Grid.Column="2" x:Name="DoctorButton" Classes="secondary"
@@ -39,7 +39,7 @@
               <DataTemplate DataType="app:MountEntry">
                 <Border Classes="card" Margin="0,0,0,8">
                   <Grid ColumnDefinitions="Auto,*,Auto,Auto">
-                    <Ellipse Grid.Column="0" Width="8" Height="8" Fill="#6FBF77"
+                    <Ellipse Grid.Column="0" Width="8" Height="8" Fill="{DynamicResource GfsOkBrush}"
                              VerticalAlignment="Center" Margin="0,0,12,0" />
                     <StackPanel Grid.Column="1" Spacing="2">
                       <TextBlock Text="{Binding Repository}" Classes="mono" FontSize="14" />
@@ -63,7 +63,7 @@
           <!-- пустое состояние: знак, одна фраза, одно действие -->
           <StackPanel x:Name="EmptyState" Spacing="12" VerticalAlignment="Center"
                       HorizontalAlignment="Left" Margin="4,0">
-            <TextBlock Text="Nothing is mounted" FontSize="16" Foreground="#cfd3e5" />
+            <TextBlock Text="Nothing is mounted" FontSize="16" Foreground="{DynamicResource GfsTextBrush}" />
             <TextBlock Classes="muted" MaxWidth="330" TextWrapping="Wrap"
                        Text="Point gitfs at a repository and its history shows up as a drive you can browse." />
             <Button Classes="primary" Content="Mount a repository"
@@ -73,7 +73,7 @@
       </Grid>
 
       <!-- панель деталей / doctor -->
-      <Border Grid.Column="1" Background="#1b1d2b" Padding="16">
+      <Border Grid.Column="1" Background="{DynamicResource GfsSurfaceDeepBrush}" Padding="16">
         <Grid RowDefinitions="Auto,*,Auto">
           <TextBlock Grid.Row="0" Classes="kicker" x:Name="SidePanelTitle"
                      Text="ENVIRONMENT" Margin="0,0,0,12" />
@@ -88,7 +88,7 @@
     </Grid>
 
     <!-- статусная строка -->
-    <Border Grid.Row="2" Background="#13151f" Padding="16,8">
+    <Border Grid.Row="2" Background="{DynamicResource GfsFooterBrush}" Padding="16,8">
       <TextBlock x:Name="StatusText" Classes="muted" Text="ready" />
     </Border>
 
@@ -96,13 +96,13 @@
          в потоке: появление тома не должно двигать таблицу под курсором. -->
     <Border Grid.Row="1" x:Name="Toast" IsVisible="False"
             HorizontalAlignment="Right" VerticalAlignment="Bottom"
-            Margin="0,0,24,20" Background="#232532" CornerRadius="10"
-            Padding="16,12" BorderBrush="#3f424d" BorderThickness="1">
+            Margin="0,0,24,20" Background="{DynamicResource GfsSurfaceBrush}" CornerRadius="10"
+            Padding="16,12" BorderBrush="{DynamicResource GfsDividerBrush}" BorderThickness="1">
       <StackPanel Orientation="Horizontal" Spacing="14">
-        <TextBlock Text="✓" Foreground="#7FB77E" FontSize="16"
+        <TextBlock Text="✓" Foreground="{DynamicResource GfsOkBrush}" FontSize="16"
                    VerticalAlignment="Center" />
         <StackPanel Spacing="2" VerticalAlignment="Center">
-          <TextBlock x:Name="ToastTitle" Foreground="#e9e9ed" FontSize="13" />
+          <TextBlock x:Name="ToastTitle" Foreground="{DynamicResource GfsTextBrush}" FontSize="13" />
           <TextBlock x:Name="ToastDetail" Classes="muted" FontSize="11.5" />
         </StackPanel>
         <Button x:Name="ToastOpen" Classes="primary" Content="Open"

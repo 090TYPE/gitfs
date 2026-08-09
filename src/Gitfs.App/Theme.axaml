@@ -1,0 +1,83 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <!-- Палитра Nocturne из макета дизайн-отдела, перенесённая токенами.
+       Раньше цвета стояли литералами в четырёх .axaml и шести .cs, и смена
+       темы была физически невозможна без правки каждого файла — а бриф
+       требует ОБЕ темы («всё — в светлой и тёмной темах»).
+
+       Роли (bg / surface / text / divider / accent / ok / warn / err) живут
+       в ThemeDictionaries и разные в двух темах; тональные рампы общие —
+       они и построены как одна шкала светлоты. -->
+
+  <ResourceDictionary.ThemeDictionaries>
+
+    <ResourceDictionary x:Key="Dark">
+      <Color x:Key="GfsBg">#161826</Color>
+      <Color x:Key="GfsSurface">#232532</Color>
+      <Color x:Key="GfsSurfaceDeep">#1b1d2b</Color>
+      <Color x:Key="GfsFooter">#13151f</Color>
+      <Color x:Key="GfsText">#e9e9ed</Color>
+      <Color x:Key="GfsTextMuted">#9397ab</Color>
+      <Color x:Key="GfsTextFaint">#75798c</Color>
+      <Color x:Key="GfsDivider">#3f424d</Color>
+      <Color x:Key="GfsAccent">#9184d9</Color>
+      <Color x:Key="GfsAccentInk">#d2cefd</Color>
+      <Color x:Key="GfsAccentInkStrong">#e7e5fe</Color>
+      <Color x:Key="GfsAccentWash">#2b2741</Color>
+      <!-- Семантика: один тон на роль, отдельно от акцента (бриф §1.2).
+           Раньше одна и та же роль была разного цвета в разных окнах. -->
+      <Color x:Key="GfsOk">#7FB77E</Color>
+      <Color x:Key="GfsWarn">#E0B26D</Color>
+      <Color x:Key="GfsErr">#E07B6D</Color>
+      <Color x:Key="GfsStrike">#595d6c</Color>
+    </ResourceDictionary>
+
+    <ResourceDictionary x:Key="Light">
+      <!-- Из светлых карточек канвы: ground neutral-100, акцент accent-600.
+           Семантика пересчитана вниз по светлоте, тон сохранён (tokens.css). -->
+      <Color x:Key="GfsBg">#f3f5fe</Color>
+      <Color x:Key="GfsSurface">#ffffff</Color>
+      <Color x:Key="GfsSurfaceDeep">#e4e7f5</Color>
+      <Color x:Key="GfsFooter">#e4e7f5</Color>
+      <Color x:Key="GfsText">#24262f</Color>
+      <Color x:Key="GfsTextMuted">#595d6c</Color>
+      <Color x:Key="GfsTextFaint">#75798c</Color>
+      <Color x:Key="GfsDivider">#b2b6ca</Color>
+      <Color x:Key="GfsAccent">#796cbf</Color>
+      <Color x:Key="GfsAccentInk">#5d5294</Color>
+      <Color x:Key="GfsAccentInkStrong">#423a6a</Color>
+      <Color x:Key="GfsAccentWash">#e7e5fe</Color>
+      <Color x:Key="GfsOk">#2f7a3f</Color>
+      <Color x:Key="GfsWarn">#8a5c00</Color>
+      <Color x:Key="GfsErr">#a63b2c</Color>
+      <Color x:Key="GfsStrike">#9397ab</Color>
+    </ResourceDictionary>
+
+  </ResourceDictionary.ThemeDictionaries>
+
+  <!-- Кисти поверх цветов: разметка обращается к ним, и одна замена цвета
+       в словаре темы меняет всё сразу. -->
+  <SolidColorBrush x:Key="GfsBgBrush" Color="{DynamicResource GfsBg}" />
+  <SolidColorBrush x:Key="GfsSurfaceBrush" Color="{DynamicResource GfsSurface}" />
+  <SolidColorBrush x:Key="GfsSurfaceDeepBrush" Color="{DynamicResource GfsSurfaceDeep}" />
+  <SolidColorBrush x:Key="GfsFooterBrush" Color="{DynamicResource GfsFooter}" />
+  <SolidColorBrush x:Key="GfsTextBrush" Color="{DynamicResource GfsText}" />
+  <SolidColorBrush x:Key="GfsTextMutedBrush" Color="{DynamicResource GfsTextMuted}" />
+  <SolidColorBrush x:Key="GfsTextFaintBrush" Color="{DynamicResource GfsTextFaint}" />
+  <SolidColorBrush x:Key="GfsDividerBrush" Color="{DynamicResource GfsDivider}" />
+  <SolidColorBrush x:Key="GfsAccentBrush" Color="{DynamicResource GfsAccent}" />
+  <SolidColorBrush x:Key="GfsAccentInkBrush" Color="{DynamicResource GfsAccentInk}" />
+  <SolidColorBrush x:Key="GfsAccentInkStrongBrush" Color="{DynamicResource GfsAccentInkStrong}" />
+  <SolidColorBrush x:Key="GfsAccentWashBrush" Color="{DynamicResource GfsAccentWash}" />
+  <SolidColorBrush x:Key="GfsOkBrush" Color="{DynamicResource GfsOk}" />
+  <SolidColorBrush x:Key="GfsWarnBrush" Color="{DynamicResource GfsWarn}" />
+  <SolidColorBrush x:Key="GfsErrBrush" Color="{DynamicResource GfsErr}" />
+  <SolidColorBrush x:Key="GfsStrikeBrush" Color="{DynamicResource GfsStrike}" />
+
+  <!-- Шрифтовые роли (бриф §1.2): моно — для данных, гротеск — для текста.
+       Стек с запасными: JetBrains Mono есть не везде, Cascadia — на Windows,
+       DejaVu Sans Mono — почти в каждом Linux. -->
+  <FontFamily x:Key="GfsMono">JetBrains Mono, Cascadia Mono, Cascadia Code, Consolas, DejaVu Sans Mono, Liberation Mono, monospace</FontFamily>
+  <FontFamily x:Key="GfsSans">Inter, Segoe UI, DejaVu Sans, sans-serif</FontFamily>
+</ResourceDictionary>
