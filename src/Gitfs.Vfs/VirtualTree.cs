@@ -66,12 +66,19 @@ public sealed class VirtualTree
             ? synthetic.PhysicalPath(snapshot, segments[1..]) : null;
     }
 
-    /// <summary>Принадлежит ли путь служебной вьюхе. Такие пути не
-    /// записываются: у диагностики нет режима «изменить».</summary>
-    public bool IsSynthetic(string path)
+    /// <summary>Запрещена ли запись по ЭТОМУ ПУТИ: вся служебная вьюха и
+    /// собранные нами маркеры. У диагностики нет режима «изменить».
+    ///
+    /// Спрашивать про тип вьюхи было нельзя. Синтетику отдаёт база всех вьюх
+    /// (маркер сабмодуля), и признак «вьюха умеет синтетику» немедленно стал
+    /// верным для каждого пути — записи перестали проходить вообще. Поймали
+    /// это одиннадцать чужих тестов про песочницу, а не рассуждение.</summary>
+    public bool IsWriteProtected(string path)
     {
         var segments = PathGrammar.Split(path);
         if (segments is null || segments.Length == 0) return false;
-        return _views.TryGetValue(segments[0], out var view) && view is ISyntheticView;
+        return _views.TryGetValue(segments[0], out var view)
+               && view is ISyntheticView synthetic
+               && synthetic.IsWriteProtected(segments[1..]);
     }
 }

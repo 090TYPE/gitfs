@@ -5,8 +5,23 @@ namespace Gitfs.Vfs.Views;
 /// <summary>Общая механика вьюх: чтение деревьев и коммитов через кэши
 /// снапшота, спуск по ОТОБРАЖАЕМЫМ именам (иначе не резолвятся readme~2 и
 /// aux%RES.c), перевод записи дерева в узел.</summary>
-public abstract class ViewBase : IView
+public abstract class ViewBase : IView, ISyntheticView
 {
+    /// <summary>Спека §3: gitlink — «пустая директория с файлом-маркером
+    /// .gitfs-submodule, внутри — OID и путь».
+    ///
+    /// Без него сабмодуль выглядел папкой, которая не открывается: щёлкнув по
+    /// ней, человек получал пустоту и никакого объяснения. Папка с одним
+    /// файлом объясняет себя сама.</summary>
+    public const string SubmoduleMarker = ".gitfs-submodule";
+
+    protected static byte[] SubmoduleText(in ObjectId commit, string path) =>
+        System.Text.Encoding.UTF8.GetBytes(
+            $"submodule{Environment.NewLine}path = {path}{Environment.NewLine}" +
+            $"commit = {commit}{Environment.NewLine}" +
+            $"gitfs does not clone submodules; open that repository separately" +
+            Environment.NewLine);
+
     protected const long MaxTreeBytes = 64L << 20;
     protected const long MaxCommitBytes = 16L << 20;
 
@@ -185,7 +200,18 @@ public abstract class ViewBase : IView
     {
         if (segments.Count == skip) return NodeInfo.Directory(commit.Committer.When);
         var entry = ResolveDisplayPath(snapshot, commit.Tree, segments, skip);
-        return entry is null ? null : ToNodeInfo(snapshot, entry.Value, commit.Committer.When);
+        if (entry is not null) return ToNodeInfo(snapshot, entry.Value, commit.Committer.When);
+
+        // Маркер сабмодуля: узла с таким именем в дереве нет, он наш.
+        if (segments.Count > skip + 1
+            && string.Equals(segments[^1], SubmoduleMarker, Names.Comparison)
+            && ResolveDisplayPath(snapshot, commit.Tree, segments.Take(segments.Count - 1).ToArray(), skip)
+                is { Mode: GitFileMode.Gitlink } gitlink)
+        {
+            var text = SubmoduleText(gitlink.Id, string.Join('/', segments.Skip(skip).SkipLast(1)));
+            return new NodeInfo(NodeKind.File, default, text.LongLength, commit.Committer.When);
+        }
+        return null;
     }
 
     protected IEnumerable<DirEntry> ListInCommit(RepoSnapshot snapshot, CommitObject commit,
@@ -199,9 +225,67 @@ public abstract class ViewBase : IView
         else
         {
             var entry = ResolveDisplayPath(snapshot, commit.Tree, segments, skip);
+            // Сабмодуль — «пустая директория с файлом-маркером» (спека §3).
+            if (entry is { Mode: GitFileMode.Gitlink } gitlink)
+            {
+                var text = SubmoduleText(gitlink.Id, string.Join('/', segments.Skip(skip)));
+                yield return new DirEntry(SubmoduleMarker, new NodeInfo(NodeKind.File, default,
+                    text.LongLength, commit.Committer.When));
+                yield break;
+            }
             if (entry is null || entry.Value.Mode != GitFileMode.Directory) yield break;
             treeId = entry.Value.Id;
         }
         foreach (var e in ListTree(snapshot, treeId, commit.Committer.When)) yield return e;
     }
+
+    /// <summary>Синтетическое содержимое вьюхи. База отдаёт маркер сабмодуля —
+    /// он появляется во ВСЕХ вьюхах, где встречается gitlink, поэтому и живёт
+    /// здесь, а не в каждой по отдельности. Вьюхи со своей синтетикой
+    /// (.gitfs/) переопределяют метод.</summary>
+    public virtual byte[]? Read(RepoSnapshot snapshot, IReadOnlyList<string> segments)
+    {
+        if (segments.Count < 2) return null;
+        if (!string.Equals(segments[^1], SubmoduleMarker, Names.Comparison)) return null;
+
+        var head = SubmoduleCommitFor(snapshot, segments.Take(segments.Count - 1).ToArray());
+        return head is null ? null
+            : SubmoduleText(head.Value.Id, string.Join('/', head.Value.Path));
+    }
+
+    public virtual string? PhysicalPath(RepoSnapshot snapshot, IReadOnlyList<string> segments) =>
+        null;
+
+    /// <summary>Записывать можно всё, кроме маркера сабмодуля: он собран нами
+    /// и содержимого в репозитории не имеет. Остальное дерево вьюхи
+    /// по-прежнему принимает запись в песочницу.</summary>
+    public virtual bool IsWriteProtected(IReadOnlyList<string> segments) =>
+        segments.Count > 0
+        && string.Equals(segments[^1], SubmoduleMarker, Names.Comparison);
+
+    /// <summary>Ищет gitlink по пути внутри вьюхи. Каждая вьюха адресует
+    /// коммит своим первым сегментом, поэтому перебираем разумные варианты:
+    /// точки входа мало, а спускаться по чужой грамматике из базы нельзя.</summary>
+    private (ObjectId Id, string Path)? SubmoduleCommitFor(RepoSnapshot snapshot,
+        IReadOnlyList<string> segments)
+    {
+        for (var skip = 0; skip < segments.Count; skip++)
+        {
+            var commit = CommitAt(snapshot, segments, skip);
+            if (commit is null) continue;
+            if (ResolveDisplayPath(snapshot, commit.Tree, segments, skip)
+                is { Mode: GitFileMode.Gitlink } gitlink)
+            {
+                return (gitlink.Id, string.Join('/', segments.Skip(skip)));
+            }
+        }
+        return null;
+    }
+
+    /// <summary>Коммит, к которому относится путь, если первые skip сегментов
+    /// его адресуют. Базовая версия знает только опорную точку; вьюхи с
+    /// собственной адресацией (branches/, commits/) уточняют.</summary>
+    protected virtual CommitObject? CommitAt(RepoSnapshot snapshot,
+        IReadOnlyList<string> segments, int skip) =>
+        skip == 0 ? HeadCommit(snapshot) : null;
 }

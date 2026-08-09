@@ -113,7 +113,7 @@ public sealed class VfsMountTarget : IMountTarget
         // Служебная вьюха только читается. Иначе запись по `.gitfs/status.txt`
         // завела бы в песочнице файл с таким именем — и он навсегда затенил бы
         // собой диагностику, ради которой вьюха и существует.
-        if (mode == OpenMode.Write && _tree.IsSynthetic(path))
+        if (mode == OpenMode.Write && _tree.IsWriteProtected(path))
             return GitfsResult<FileHandle>.Fail(GitfsError.AccessDenied);
         return Guard(() =>
         {

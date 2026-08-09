@@ -20,6 +20,15 @@ public abstract class RefView : ViewBase
         return set;
     }
 
+    /// <summary>Первые skip сегментов адресуют ссылку — значит и коммит.
+    /// Нужно базе, чтобы найти gitlink под путём и отдать маркер сабмодуля.</summary>
+    protected override CommitObject? CommitAt(RepoSnapshot snapshot,
+        IReadOnlyList<string> segments, int skip)
+    {
+        if (skip == 0) return null;
+        return TipOf(snapshot, RefPrefix + string.Join('/', segments.Take(skip)));
+    }
+
     public override NodeInfo? Resolve(RepoSnapshot snapshot, IReadOnlyList<string> segments)
     {
         if (segments.Count == 0) return NodeInfo.Directory(ViewTimestamp(snapshot));

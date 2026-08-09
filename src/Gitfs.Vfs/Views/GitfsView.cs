@@ -118,7 +118,7 @@ public sealed class GitfsView : ViewBase, ISyntheticView
     /// <summary>Байты синтетического файла. null — путь не синтетический
     /// (например, файл внутри overlay/: он лежит на диске и читается обычным
     /// путём).</summary>
-    public byte[]? Read(RepoSnapshot snapshot, IReadOnlyList<string> segments)
+    public override byte[]? Read(RepoSnapshot snapshot, IReadOnlyList<string> segments)
     {
         if (segments.Count != 1) return null;
         if (Is(segments[0], StatusFile)) return Render(snapshot);
@@ -129,7 +129,7 @@ public sealed class GitfsView : ViewBase, ISyntheticView
     /// <summary>Файл песочницы на диске. Читается как есть — копировать его в
     /// память ради просмотра незачем, а размера у пользовательской записи
     /// может быть сколько угодно.</summary>
-    public string? PhysicalPath(RepoSnapshot snapshot, IReadOnlyList<string> segments)
+    public override string? PhysicalPath(RepoSnapshot snapshot, IReadOnlyList<string> segments)
     {
         if (_overlay is null || segments.Count < 2 || !Is(segments[0], OverlayDir)) return null;
         var virtualPath = string.Join('/', segments.Skip(1));
@@ -142,6 +142,10 @@ public sealed class GitfsView : ViewBase, ISyntheticView
         }
         return null;
     }
+
+    /// <summary>Служебная вьюха не принимает запись НИГДЕ: диагностика
+    /// читается, а не правится.</summary>
+    public override bool IsWriteProtected(IReadOnlyList<string> segments) => true;
 
     private bool Is(string a, string b) => string.Equals(a, b, Names.Comparison);
 

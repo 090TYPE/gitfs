@@ -18,6 +18,11 @@ public sealed class CommitsView : ViewBase
 
     public override string Name => "commits";
 
+    /// <summary>Коммит адресует ровно первый сегмент.</summary>
+    protected override CommitObject? CommitAt(RepoSnapshot snapshot,
+        IReadOnlyList<string> segments, int skip) =>
+        skip == 1 ? FindCommit(snapshot, segments[0]) : null;
+
     public override NodeInfo? Resolve(RepoSnapshot snapshot, IReadOnlyList<string> segments)
     {
         if (segments.Count == 0) return NodeInfo.Directory(ViewTimestamp(snapshot));
