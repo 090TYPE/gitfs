@@ -4,10 +4,18 @@ using Gitfs.Vfs.Overlay;
 
 namespace Gitfs.App.Tests;
 
+/// <summary>Корень песочниц ОДИН на машину, а проверки в нём считают
+/// каталоги. Пока классы шли параллельно, соседний тест успевал создать
+/// свою песочницу между «до» и «после» — и проверка падала на том, к чему
+/// не имела отношения. Общее имя коллекции выстраивает их в очередь.</summary>
+[CollectionDefinition("overlay-root", DisableParallelization = true)]
+public sealed class OverlayRootCollection { }
+
 /// <summary>MountService был единственным компонентом без единого теста — и
 /// за один день дал два дефекта: песочница не освобождалась вовсе, а вместе
 /// с ней репозиторий оставался заблокированным до конца жизни приложения.
 /// Оба живут в учёте ресурсов, а не в разборе git, и видны без драйвера.</summary>
+[Collection("overlay-root")]
 public class MountServiceTests
 {
     private static RepoBuilder BuildRepo()
@@ -125,10 +133,18 @@ public class MountServiceTests
         Assert.Empty(service.Entries);
     }
 
-    private static int SandboxCount()
+    /// <summary>Считаются только СВОИ песочницы. Корень общий на машину:
+    /// туда пишут и другие тестовые сборки, идущие параллельно, и настоящий
+    /// gitfs, если он в эту минуту смонтирован. Счёт всех подряд делал
+    /// проверку зависимой от посторонних процессов — она и падала в общем
+    /// прогоне решения, оставаясь зелёной поодиночке.</summary>
+    internal static int SandboxCount()
     {
         var root = OverlayStore.DefaultRoot();
-        return Directory.Exists(root) ? Directory.GetDirectories(root).Length : 0;
+        if (!Directory.Exists(root)) return 0;
+        var mine = Environment.ProcessId + "-";
+        return Directory.GetDirectories(root)
+            .Count(d => Path.GetFileName(d).StartsWith(mine, StringComparison.Ordinal));
     }
 
     /// <summary>Точка монтирования, которую адаптер обязан отвергнуть НЕ

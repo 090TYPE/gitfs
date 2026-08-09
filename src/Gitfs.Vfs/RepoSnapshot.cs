@@ -27,8 +27,10 @@ public sealed class RepoSnapshot : IDisposable
     /// новый снапшот с пустыми кэшами.</summary>
     /// <summary>Бюджеты — в БАЙТАХ (спека §7), а не в записях: одно дерево
     /// может весить мегабайты, и счёт по штукам не ограничивает память.</summary>
-    public LruCache<ObjectId, TreeObject> TreeCache { get; } =
-        new(64L << 20, t => 64 + t.Entries.Count * 64L);
+    /// <summary>Бюджет задаётся монтированием (Advanced в диалоге): на
+    /// репозитории с гигантскими деревьями его поднимают, на слабой машине
+    /// опускают. Две трети общего бюджета уходят сюда, треть — листингам.</summary>
+    public LruCache<ObjectId, TreeObject> TreeCache { get; }
     /// <summary>ref-имя → вершина (null — битая ветка). Листинг корня вьюхи
     /// иначе парсит коммит на каждую ветку при каждом перечислении.</summary>
     public System.Collections.Concurrent.ConcurrentDictionary<string, CommitObject?> TipCache { get; } = new();
@@ -36,8 +38,7 @@ public sealed class RepoSnapshot : IDisposable
     /// иммутабельного объекта при фиксированной политике имён.</summary>
     /// <summary>Ключ включает тег политики: один и тот же OID дерева даёт
     /// разные отображаемые имена под разными политиками (найдено тестом).</summary>
-    public LruCache<(ObjectId Tree, string Policy), IReadOnlyList<DisplayName>> ListingCache { get; } =
-        new(32L << 20, l => 64 + l.Sum(d => (long)(d.Display.Length + d.GitName.Length) * 2 + 48));
+    public LruCache<(ObjectId Tree, string Policy), IReadOnlyList<DisplayName>> ListingCache { get; }
 
     /// <summary>История пути (history/) — самая дорогая производная: без кэша
     /// каждый вызов стоит полный обход истории (ревью M4).</summary>
@@ -53,15 +54,28 @@ public sealed class RepoSnapshot : IDisposable
     public LruCache<(ObjectId Tree, string Path), CachedEntry> PathCache { get; } =
         new(65536, _ => 1);
 
+    /// <summary>Настройки монтирования, которым принадлежит снапшот.
+    /// Вьюхи читают отсюда опорную точку истории.</summary>
+    public MountOptions Options { get; }
+
     private RepoSnapshot(string gitDir, RefStore refs, ObjectReader objects,
-        Core.Accel.CommitGraph? graph)
+        Core.Accel.CommitGraph? graph, MountOptions options)
     {
         GitDir = gitDir;
         Refs = refs;
         Objects = objects;
+        Options = options;
         Trees = new TreeWalker(objects);
         // commit-graph необязателен: нет — обход идёт через чтение объектов
         Revs = new RevWalker(objects, graph);
+
+        // Общий бюджет делится между деревьями и листингами: деревья
+        // крупнее и запрашиваются чаще, поэтому им две трети.
+        var budget = (long)Math.Max(1, options.CacheMegabytes) << 20;
+        TreeCache = new LruCache<ObjectId, TreeObject>(
+            budget * 2 / 3, t => 64 + t.Entries.Count * 64L);
+        ListingCache = new LruCache<(ObjectId, string), IReadOnlyList<DisplayName>>(
+            budget / 3, l => 64 + l.Sum(d => (long)(d.Display.Length + d.GitName.Length) * 2 + 48));
     }
 
     /// <summary>graph передаётся снаружи, когда вызывающий уже держит
@@ -69,9 +83,15 @@ public sealed class RepoSnapshot : IDisposable
     /// движение ссылок его не портит — а перечитывать десятки мегабайт на
     /// каждую смену эпохи, да ещё под замком менеджера, значит подвешивать
     /// том на каждый git fetch.</summary>
-    public static RepoSnapshot Load(string gitDir, Core.Accel.CommitGraph? graph = null) =>
-        new(gitDir, RefStore.Load(gitDir), new ObjectReader(gitDir),
-            graph ?? Core.Accel.CommitGraph.TryLoad(gitDir));
+    public static RepoSnapshot Load(string gitDir, Core.Accel.CommitGraph? graph = null,
+        MountOptions? options = null) =>
+        LoadWith(gitDir, graph, options ?? MountOptions.Default);
+
+    private static RepoSnapshot LoadWith(string gitDir, Core.Accel.CommitGraph? graph,
+        MountOptions options) =>
+        new(gitDir, RefStore.Load(gitDir),
+            new ObjectReader(gitDir, (long)Math.Max(1, options.MaxCachedBlobMegabytes) << 20),
+            graph ?? Core.Accel.CommitGraph.TryLoad(gitDir), options);
 
     /// <summary>false — снапшот уже освобождён; вызывающий обязан перечитать
     /// Current и повторить (гонка с подменой эпохи).</summary>
@@ -151,6 +171,7 @@ public sealed class SnapshotManager : IDisposable
 {
     private readonly object _gate = new();
     private readonly string _gitDir;
+    private readonly MountOptions _options;
     private readonly long _throttleMs;
 
     private RepoSnapshot _current;
@@ -158,11 +179,12 @@ public sealed class SnapshotManager : IDisposable
     private long _lastCheckTicks;
     private bool _disposed;
 
-    public SnapshotManager(string gitDir, TimeSpan? throttle = null)
+    public SnapshotManager(string gitDir, TimeSpan? throttle = null, MountOptions? options = null)
     {
         _gitDir = gitDir;
+        _options = options ?? MountOptions.Default;
         _throttleMs = (long)(throttle ?? TimeSpan.FromSeconds(1)).TotalMilliseconds;
-        _current = RepoSnapshot.Load(gitDir);
+        _current = RepoSnapshot.Load(gitDir, null, _options);
         _signature = ComputeSignature(gitDir);
         _lastCheckTicks = Environment.TickCount64;
     }
@@ -201,7 +223,7 @@ public sealed class SnapshotManager : IDisposable
                 var signature = ComputeSignature(_gitDir);
                 if (signature == _signature) return Current;
 
-                var fresh = RepoSnapshot.Load(_gitDir, ReuseGraph());
+                var fresh = RepoSnapshot.Load(_gitDir, ReuseGraph(), _options);
                 var old = _current;
                 _signature = signature;
                 Volatile.Write(ref _current, fresh); // публикация = одна запись ссылки

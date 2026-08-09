@@ -8,7 +8,7 @@ using Avalonia.Platform.Storage;
 namespace Gitfs.App;
 
 public sealed record MountRequest(string RepositoryPath, string MountPoint,
-    IReadOnlyCollection<string> Views);
+    IReadOnlyCollection<string> Views, Gitfs.Vfs.MountOptions Options);
 
 public partial class MountDialog : Window
 {
@@ -43,6 +43,9 @@ public partial class MountDialog : Window
             Program.Log("mount-dialog-init", e);
             LettersHint.Text = "could not enumerate drives: " + e.Message;
         }
+
+        PolicyBox.ItemsSource = new[] { "native", "portable" };
+        PolicyBox.SelectedIndex = 0;
 
         try { RepoBox.Text = Directory.GetCurrentDirectory(); }
         catch (Exception) { RepoBox.Text = ""; } // текущий каталог мог исчезнуть
@@ -103,10 +106,54 @@ public partial class MountDialog : Window
                      && MountService.ResolveGitDir(RepoBox.Text!) is not null;
         RepoProblem.IsVisible = !repoOk && !string.IsNullOrWhiteSpace(RepoBox.Text);
         RepoProblem.Text = "No .git directory here. Pick the repository root.";
-        MountAction.IsEnabled = repoOk && selected.Count > 0 && MountPoint is not null;
+
+        // Настройки проверяются здесь же: неверное число гасит кнопку и
+        // называет причину, а не всплывает исключением после нажатия.
+        var options = ReadOptions();
+        var problem = options.Validate();
+        AdvancedProblem.IsVisible = problem is not null;
+        AdvancedProblem.Text = problem;
+        if (problem is not null) AdvancedBox.IsExpanded = true;
+
+        MountAction.IsEnabled = repoOk && selected.Count > 0 && MountPoint is not null
+                                && problem is null;
         MountAction.Content = MountPoint is { } point ? $"Mount to {point}" : "Mount";
-        FooterFlags.Text = $"{selected.Count} view{(selected.Count == 1 ? "" : "s")} · writes go to a sandbox";
+
+        // Подвал показывает то, что реально выбрано, а не постоянную надпись
+        var flags = new List<string> { $"{selected.Count} view{(selected.Count == 1 ? "" : "s")}" };
+        flags.Add(options.ReadOnly ? "read-only" : "writes go to a sandbox");
+        if (options.KeepOverlay) flags.Add("overlay kept");
+        if (options.NamePolicy == Gitfs.Vfs.NamePolicyKind.Portable) flags.Add("portable names");
+        if (options.HistoryRef is { } r) flags.Add("history from " + r);
+        FooterFlags.Text = string.Join(" · ", flags);
     }
+
+    /// <summary>Собирает настройки из полей Advanced. Пустое или нечисловое
+    /// поле означает «оставить как есть» — диалог не должен наказывать за
+    /// недописанное число, пока пользователь его набирает.</summary>
+    private Gitfs.Vfs.MountOptions ReadOptions()
+    {
+        static int Number(TextBox box, int fallback) =>
+            int.TryParse(box.Text?.Trim(), out var value) ? value : fallback;
+
+        return new Gitfs.Vfs.MountOptions
+        {
+            HistoryRef = string.IsNullOrWhiteSpace(HistoryRefBox.Text) ? null : HistoryRefBox.Text!.Trim(),
+            CommitLimit = Number(CommitLimitBox, 200),
+            HistoryLimit = Number(HistoryLimitBox, 500),
+            CacheMegabytes = Number(CacheBox, 96),
+            MaxCachedBlobMegabytes = Number(MaxBlobBox, 8),
+            NamePolicy = PolicyBox.SelectedIndex == 1
+                ? Gitfs.Vfs.NamePolicyKind.Portable
+                : Gitfs.Vfs.NamePolicyKind.Native,
+            ReadOnly = ReadOnlyBox.IsChecked == true,
+            KeepOverlay = KeepOverlayBox.IsChecked == true,
+        };
+    }
+
+    private void OnAdvancedChanged(object? sender, RoutedEventArgs e) => UpdatePreview();
+    private void OnAdvancedChanged(object? sender, TextChangedEventArgs e) => UpdatePreview();
+    private void OnAdvancedChanged(object? sender, SelectionChangedEventArgs e) => UpdatePreview();
 
     private void OnViewToggled(object? sender, RoutedEventArgs e) => UpdatePreview();
     private void OnLetterChanged(object? sender, SelectionChangedEventArgs e) => UpdatePreview();
@@ -152,6 +199,8 @@ public partial class MountDialog : Window
     {
         var views = SelectedViews();
         if (views.Count == 0 || MountPoint is not { } mountPoint) return;
-        Close(new MountRequest(RepoBox.Text!, mountPoint, views));
+        var options = ReadOptions();
+        if (options.Validate() is not null) return; // кнопка и так серая; это второй рубеж
+        Close(new MountRequest(RepoBox.Text!, mountPoint, views, options));
     }
 }

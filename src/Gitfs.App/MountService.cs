@@ -72,15 +72,22 @@ public sealed class MountService
         "macOS needs macFUSE, which gitfs does not carry yet; the tree is still browsable";
 #endif
 
-    public static VirtualTree BuildTree(IReadOnlyCollection<string> views)
+    /// <summary>Дерево вьюх по настройкам монтирования. Лимиты доходят ровно
+    /// до тех вьюх, которые в диалоге и названы: «commit limit» — это commits/,
+    /// «history limit» — потолок версий одного файла. DatesView живёт со своим
+    /// собственным окном: подписать одним числом две разные величины значит
+    /// тихо урезать одну из них.</summary>
+    public static VirtualTree BuildTree(IReadOnlyCollection<string> views,
+        MountOptions? options = null)
     {
-        var names = NamePolicy.For(NamePolicyKind.Native);
+        var opts = options ?? MountOptions.Default;
+        var names = NamePolicy.For(opts.NamePolicy);
         var list = new List<IView>();
         if (views.Contains("branches")) list.Add(new BranchesView(names));
         if (views.Contains("tags")) list.Add(new TagsView(names));
-        if (views.Contains("commits")) list.Add(new CommitsView(names));
+        if (views.Contains("commits")) list.Add(new CommitsView(names, opts.CommitLimit));
         if (views.Contains("dates")) list.Add(new DatesView(names));
-        if (views.Contains("history")) list.Add(new HistoryView(names));
+        if (views.Contains("history")) list.Add(new HistoryView(names, opts.HistoryLimit));
         return new VirtualTree(list);
     }
 
@@ -97,9 +104,13 @@ public sealed class MountService
 
     /// <summary>Монтирует репозиторий. Бросает с человеческим текстом,
     /// если платформа не поддерживает монтирование или драйвер недоступен.</summary>
-    public MountEntry Mount(string repoPath, string mountPoint, IReadOnlyCollection<string> views)
+    public MountEntry Mount(string repoPath, string mountPoint, IReadOnlyCollection<string> views,
+        MountOptions? options = null)
     {
         if (!CanMount) throw new InvalidOperationException(MountBlockedReason!);
+        var opts = options ?? MountOptions.Default;
+        // Диалог уже проверил эти числа, но Mount вызывается не только из него.
+        if (opts.Validate() is { } problem) throw new ArgumentException(problem, nameof(options));
         var gitDir = Doctor.ResolveGitDir(repoPath)
             ?? throw new InvalidOperationException($"no .git directory in {repoPath}");
         lock (_gate)
@@ -109,19 +120,20 @@ public sealed class MountService
         }
 
 #if GITFS_WINFSP || GITFS_FUSE
-        var manager = new SnapshotManager(gitDir);
-        var overlay = OverlayStore.Create();
-        var target = new VfsMountTarget(manager, BuildTree(views),
-            new DirectoryInfo(repoPath).Name, readOnly: false, overlay: overlay);
+        var names = NamePolicy.For(opts.NamePolicy);
+        var manager = new SnapshotManager(gitDir, options: opts);
+        var overlay = OverlayStore.Create(keepOnDispose: opts.KeepOverlay, names: names);
+        var target = new VfsMountTarget(manager, BuildTree(views, opts),
+            new DirectoryInfo(repoPath).Name, readOnly: opts.ReadOnly, overlay: overlay);
         IDisposable mount;
         // выше границы адаптеры отличаются одной строкой — ровно в этом и
         // состояло обещание IMountTarget
         try
         {
 #if GITFS_WINFSP
-            mount = GitfsMount.Mount(target, mountPoint, readOnly: false);
+            mount = GitfsMount.Mount(target, mountPoint, readOnly: opts.ReadOnly);
 #else
-            mount = GitfsFuseMount.Mount(target, mountPoint, readOnly: false);
+            mount = GitfsFuseMount.Mount(target, mountPoint, readOnly: opts.ReadOnly);
 #endif
         }
         // Освобождаем ЦЕЛЬ, а не только песочницу: через неё уходит и

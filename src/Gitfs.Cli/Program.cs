@@ -50,21 +50,93 @@ static void PrintUsage()
           gitfs purge                  remove overlays left by crashed runs
 
         Views: branches, tags, commits, dates, history.
+
+        Mount options (the Advanced section of the desktop app):
+          --read-only                  refuse every write to the volume
+          --keep-overlay               keep the write sandbox after unmount
+          --portable-names             apply the Windows name rules everywhere
+          --history-ref=<ref|sha>      show history as of this point, not HEAD
+          --commit-limit=<n>           how many commits commits/ lists (200)
+          --history-limit=<n>          version ceiling per file (500)
+          --cache-mb=<n>               tree and listing cache budget (96)
+          --max-blob-mb=<n>            ceiling for one cached object (8)
         """);
 }
 
-/// <summary>Все пять вьюх спеки §3 плюс политика имён текущей платформы.</summary>
-static VirtualTree BuildTree()
+/// <summary>Все пять вьюх спеки §3 по настройкам монтирования.</summary>
+static VirtualTree BuildTree(MountOptions? options = null)
 {
-    var names = NamePolicy.For(NamePolicyKind.Native);
+    var opts = options ?? MountOptions.Default;
+    var names = NamePolicy.For(opts.NamePolicy);
     return new VirtualTree(new IView[]
     {
         new BranchesView(names),
         new TagsView(names),
-        new CommitsView(names),
+        new CommitsView(names, opts.CommitLimit),
         new DatesView(names),
-        new HistoryView(names),
+        new HistoryView(names, opts.HistoryLimit),
     });
+}
+
+/// <summary>Разбор ключей монтирования — та же секция Advanced, что и в
+/// диалоге приложения. Два входа в один продукт обязаны уметь одно и то же:
+/// настройка, доступная только через окно, для сценариев и CI не существует.
+/// Возвращает null и печатает причину, если ключ или значение непонятны —
+/// молча взять значение по умолчанию значило бы сделать не то, что просили.</summary>
+static MountOptions? ParseOptions(IEnumerable<string> flags)
+{
+    var options = MountOptions.Default;
+    foreach (var flag in flags)
+    {
+        var eq = flag.IndexOf('=');
+        var key = eq < 0 ? flag : flag[..eq];
+        var raw = eq < 0 ? null : flag[(eq + 1)..];
+
+        bool Number(out int value)
+        {
+            if (int.TryParse(raw, out value)) return true;
+            Console.Error.WriteLine($"fail {key} needs a number, got '{raw}'");
+            return false;
+        }
+
+        switch (key)
+        {
+            case "--read-only": options = options with { ReadOnly = true }; break;
+            case "--keep-overlay": options = options with { KeepOverlay = true }; break;
+            case "--portable-names":
+                options = options with { NamePolicy = NamePolicyKind.Portable }; break;
+            case "--history-ref":
+                if (string.IsNullOrWhiteSpace(raw))
+                {
+                    Console.Error.WriteLine("fail --history-ref needs a ref or a sha");
+                    return null;
+                }
+                options = options with { HistoryRef = raw }; break;
+            case "--commit-limit":
+                if (!Number(out var commits)) return null;
+                options = options with { CommitLimit = commits }; break;
+            case "--history-limit":
+                if (!Number(out var history)) return null;
+                options = options with { HistoryLimit = history }; break;
+            case "--cache-mb":
+                if (!Number(out var cache)) return null;
+                options = options with { CacheMegabytes = cache }; break;
+            case "--max-blob-mb":
+                if (!Number(out var blob)) return null;
+                options = options with { MaxCachedBlobMegabytes = blob }; break;
+            default:
+                Console.Error.WriteLine($"fail unknown option: {flag}");
+                Console.Error.WriteLine("     → gitfs --help lists the mount options");
+                return null;
+        }
+    }
+
+    if (options.Validate() is { } problem)
+    {
+        Console.Error.WriteLine($"fail {problem}");
+        return null;
+    }
+    return options;
 }
 
 static int RunDoctor(string[] rest)
@@ -79,6 +151,12 @@ static int RunDoctor(string[] rest)
 /// Проводник, когда появится адаптер. Полезно и как диагностика, и для GIF.</summary>
 static int Tree(string[] rest)
 {
+    // Ключи те же, что у mount: дерево обязано показывать ровно то, что
+    // покажет том с этими настройками, иначе обход теряет смысл как проверка.
+    var options = ParseOptions(rest.Where(a => a.StartsWith("--")));
+    if (options is null) return 1;
+    rest = rest.Where(a => !a.StartsWith("--")).ToArray();
+
     if (rest.Length == 0)
     {
         Console.Error.WriteLine("fail gitfs tree needs a repository path");
@@ -92,8 +170,8 @@ static int Tree(string[] rest)
         return 1;
     }
 
-    using var snapshot = RepoSnapshot.Load(gitDir);
-    var tree = BuildTree();
+    using var snapshot = RepoSnapshot.Load(gitDir, options: options);
+    var tree = BuildTree(options);
     var path = rest.Length > 1 ? rest[1] : "/";
 
     var node = tree.Resolve(snapshot, path);
@@ -194,6 +272,8 @@ static int Mount(string[] rest)
     }
     var repoPath = Path.GetFullPath(rest[0]);
     var mountPoint = rest[1];
+    var options = ParseOptions(rest.Skip(2));
+    if (options is null) return 1;
 #if !GITFS_WINFSP && !GITFS_FUSE
     Console.Error.WriteLine("fail gitfs cannot mount on this platform yet");
     Console.Error.WriteLine("     → macOS needs macFUSE (milestone M8); gitfs tree works everywhere");
@@ -209,30 +289,42 @@ static int Mount(string[] rest)
     }
 
     var gitDir = Doctor.ResolveGitDir(repoPath)!;
-    var manager = new SnapshotManager(gitDir);
-    var tree = BuildTree();
+    var manager = new SnapshotManager(gitDir, options: options);
+    var tree = BuildTree(options);
     var name = new DirectoryInfo(repoPath).Name;
     // overlay включён: без него Word и Excel не откроют файл из старого
     // коммита — они пишут lock-файлы рядом с открываемым (спека §10).
     // using обязателен: песочница живёт ровно столько, сколько том.
-    using var overlay = OverlayStore.Create();
-    var target = new VfsMountTarget(manager, tree, name, readOnly: false, overlay: overlay);
+    using var overlay = OverlayStore.Create(keepOnDispose: options.KeepOverlay,
+        names: NamePolicy.For(options.NamePolicy));
+    var target = new VfsMountTarget(manager, tree, name, readOnly: options.ReadOnly,
+        overlay: overlay);
 
     var started = DateTime.UtcNow;
     void Log(string line) => Console.Error.WriteLine($"     {line}");
     try
     {
 #if GITFS_WINFSP
-        using var mount = GitfsMount.Mount(target, mountPoint, Log, readOnly: false);
+        using var mount = GitfsMount.Mount(target, mountPoint, Log, readOnly: options.ReadOnly);
 #else
-        using var mount = GitfsFuseMount.Mount(target, mountPoint, Log, readOnly: false);
+        using var mount = GitfsFuseMount.Mount(target, mountPoint, Log, readOnly: options.ReadOnly);
 #endif
         var elapsed = (DateTime.UtcNow - started).TotalSeconds;
-        Console.WriteLine($"mounted {mountPoint} · {name} · 5 views · {elapsed:0.0}s");
+        var mode = options.ReadOnly ? "read-only" : "writable";
+        Console.WriteLine($"mounted {mountPoint} · {name} · 5 views · {mode} · {elapsed:0.0}s");
+        if (options.KeepOverlay)
+            Console.WriteLine($"overlay kept at {overlay.Root}");
         Console.WriteLine("press Ctrl+C to unmount");
 
-        using var stop = new ManualResetEventSlim();
-        using var torndown = new ManualResetEventSlim();
+        // Без using — сознательно. Обработчик ProcessExit ниже срабатывает
+        // уже ПОСЛЕ выхода из этой области видимости, и на штатном снятии
+        // тома он звал Wait по освобождённому объекту: каждое размонтирование
+        // заканчивалось «Unhandled exception: ObjectDisposedException» —
+        // строкой, которая выглядит как авария там, где всё прошло хорошо.
+        // Эти два события не держат ничего, что нужно вернуть системе раньше
+        // конца процесса.
+        var stop = new ManualResetEventSlim();
+        var torndown = new ManualResetEventSlim();
         Console.CancelKeyPress += (_, e) => { e.Cancel = true; stop.Set(); };
 
         // SIGTERM тоже снимает том: без этого docker stop и systemd оставляли
@@ -254,16 +346,20 @@ static int Mount(string[] rest)
         // попросить о нём. Иначе рантайм завершает процесс, пока основной
         // поток ещё внутри Dispose, и остаются висящая точка монтирования
         // и брошенная песочница — ровно то, что этот код должен предотвращать.
-        AppDomain.CurrentDomain.ProcessExit += (_, _) =>
+        EventHandler onExit = (_, _) =>
         {
             stop.Set();
             torndown.Wait(TimeSpan.FromSeconds(10));
         };
+        AppDomain.CurrentDomain.ProcessExit += onExit;
 
         stop.Wait();
         Console.WriteLine($"unmounting {mountPoint}");
         mount.Dispose();
         torndown.Set();
+        // Штатный путь прошёл — подстраховка больше не нужна и не должна
+        // выполняться: ей нечего ждать, а ждать она умеет только десять секунд.
+        AppDomain.CurrentDomain.ProcessExit -= onExit;
         return 0;
     }
 #if GITFS_WINFSP

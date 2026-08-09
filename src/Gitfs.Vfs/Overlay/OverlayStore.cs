@@ -85,10 +85,21 @@ public sealed class OverlayStore : IDisposable
         // Два монтирования одного процесса в одну секунду дают одинаковый
         // mount-id: раньше они молча делили каталог, и первый же Dispose
         // сносил песочницу второго вместе с несохранёнными записями.
+        //
+        // Замка для этого мало: он охраняет только ОДНОВРЕМЕННЫЕ монтирования.
+        // Песочница, оставленная сознательно («keep overlay after unmount»),
+        // замка уже не держит — и следующий том той же секунды въезжал прямо
+        // в неё, а при размонтировании стирал вместе со всем, что пользователь
+        // просил сохранить. Каталог берётся только тогда, когда его ещё нет.
         for (var attempt = 1; ; attempt++)
         {
             var mountId = attempt == 1 ? baseId : $"{baseId}-{attempt}";
             var root = Path.Combine(parent, mountId);
+            if (Directory.Exists(root))
+            {
+                if (attempt < 64) continue;
+                throw new IOException($"cannot find a free overlay directory next to {root}");
+            }
             Directory.CreateDirectory(root);
             RestrictToOwner(root);
 

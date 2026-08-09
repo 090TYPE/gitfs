@@ -13,7 +13,10 @@ public sealed class ObjectReader : IObjectReader, IDisposable
     private readonly PackFile[] _packs;
     private readonly string _gitDir;
 
-    public ObjectReader(string gitDir)
+    /// <param name="maxCachedObjectBytes">Потолок для одного объекта в кэше
+    /// развёрнутых дельт — «Max cached blob» из настроек монтирования.
+    /// null — только общий бюджет пакета.</param>
+    public ObjectReader(string gitDir, long? maxCachedObjectBytes = null)
     {
         _gitDir = gitDir;
         _loose = new LooseObjectReader(gitDir);
@@ -28,7 +31,7 @@ public sealed class ObjectReader : IObjectReader, IDisposable
                     // .pack без .idx — штатное окно во время git repack/fetch
                     // (.pack пишется раньше индекса): пропускаем, не валим весь ридер
                     if (!File.Exists(Path.ChangeExtension(packPath, ".idx"))) continue;
-                    packs.Add(PackFile.Open(packPath));
+                    packs.Add(PackFile.Open(packPath, maxObjectBytes: maxCachedObjectBytes));
                 }
             }
             catch

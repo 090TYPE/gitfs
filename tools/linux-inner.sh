@@ -35,7 +35,12 @@ fi
 echo
 echo "=== mount ==="
 mkdir -p /mnt/gitfs
-/tmp/dist/gitfs mount /work /mnt/gitfs &
+# Вывод тома сохраняется целиком: штатное снятие обязано пройти БЕЗ
+# исключений. Раньше каждое размонтирование печатало «Unhandled exception»
+# из обработчика ProcessExit — и это никого не останавливало, потому что
+# сам том снимался, а stderr никто не сверял.
+mount_log=$(mktemp)
+/tmp/dist/gitfs mount /work /mnt/gitfs > "$mount_log" 2>&1 &
 mount_pid=$!
 for _ in $(seq 1 40); do mountpoint -q /mnt/gitfs && break; sleep 0.25; done
 
@@ -91,6 +96,50 @@ else
     echo "fail  the symlink volume never appeared"; status=1
 fi
 
+# Ключи монтирования на ЖИВОМ томе. Их путь — из разбора аргументов в
+# адаптер — не проверяется ни одним модульным тестом: там, где кончается
+# VfsMountTarget, начинается драйвер. Проверяем на отдельном томе, чтобы не
+# трогать основной, по которому идёт остальная приёмка.
+echo
+echo "=== mount options on a live volume ==="
+mkdir -p /mnt/ro
+/tmp/dist/gitfs mount /work /mnt/ro --read-only --commit-limit=5 &
+ro_pid=$!
+for _ in $(seq 1 40); do mountpoint -q /mnt/ro && break; sleep 0.25; done
+if mountpoint -q /mnt/ro; then
+    B=$(git -C /work symbolic-ref --short HEAD)
+
+    # --read-only: запись обязана быть отвергнута ЯДРОМ, а не проглочена
+    if echo overwrite > "/mnt/ro/branches/$B/LICENSE" 2>/dev/null; then
+        echo "fail  --read-only accepted a write"; status=1
+    else
+        echo "ok    --read-only refused a write"
+    fi
+    # и файл при этом не пострадал
+    if [ "$(stat -c %s "/mnt/ro/branches/$B/LICENSE")" = "$(git -C /work cat-file -s "HEAD:LICENSE")" ]; then
+        echo "ok    --read-only left the file untouched"
+    else
+        echo "fail  --read-only changed the file it refused to write"; status=1
+    fi
+    # чтение при этом работает: только на чтение — это не «не работает»
+    if [ -s "/mnt/ro/branches/$B/LICENSE" ]; then
+        echo "ok    --read-only still reads"
+    else
+        echo "fail  --read-only broke reading too"; status=1
+    fi
+    # --commit-limit: ровно столько коммитов, сколько попросили
+    n=$(ls /mnt/ro/commits | wc -l)
+    if [ "$n" -eq 5 ]; then
+        echo "ok    --commit-limit=5 listed 5 commits"
+    else
+        echo "fail  --commit-limit=5 listed $n commits"; status=1
+    fi
+
+    kill -TERM "$ro_pid" 2>/dev/null; wait "$ro_pid" 2>/dev/null
+else
+    echo "fail  the read-only volume never appeared"; status=1
+fi
+
 # Второй прогон по ТОМУ ЖЕ тому: набор обязан быть повторяемым. Пока
 # сценарии записи трогали те же файлы, что читают проверки выше, второй
 # прогон падал на следах первого — и набор, который можно запустить один
@@ -107,6 +156,13 @@ teardown=0
 mountpoint -q /mnt/gitfs && { echo "fail still mounted after SIGTERM"; teardown=1; }
 overlays=$(ls "${XDG_STATE_HOME:-$HOME/.local/state}/gitfs/overlay" 2>/dev/null | wc -l)
 [ "$overlays" -eq 0 ] || { echo "fail $overlays overlay(s) left behind"; teardown=1; }
+if grep -q "Unhandled exception" "$mount_log"; then
+    echo "fail the volume died on an unhandled exception while unmounting:"
+    grep -A 4 "Unhandled exception" "$mount_log" | sed 's/^/     /'
+    teardown=1
+fi
+grep -q "^unmounting /mnt/gitfs" "$mount_log" \
+    || { echo "fail the volume never said it was unmounting"; teardown=1; }
 # Строка «ok» печаталась безусловно — в том числе сразу после двух строк
 # «fail» над ней. Отчёт, который хвалит то, что только что провалил,
 # хуже отсутствия отчёта.

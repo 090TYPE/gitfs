@@ -73,6 +73,60 @@
             </StackPanel>
           </Border>
         </StackPanel>
+
+        <!-- Advanced: всё здесь действует. Переключатель, который ничего не
+             меняет, хуже отсутствующего — пользователь считает, что настроил. -->
+        <Expander x:Name="AdvancedBox" Header="Advanced" IsExpanded="False">
+          <StackPanel Spacing="10" Margin="0,8,0,0">
+            <Grid ColumnDefinitions="150,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto" >
+              <TextBlock Grid.Row="0" Grid.Column="0" Text="History ref" Classes="muted"
+                         VerticalAlignment="Center" />
+              <TextBox Grid.Row="0" Grid.Column="1" x:Name="HistoryRefBox" Margin="0,0,0,6"
+                       Watermark="HEAD" TextChanged="OnAdvancedChanged" />
+
+              <TextBlock Grid.Row="1" Grid.Column="0" Text="Commit limit" Classes="muted"
+                         VerticalAlignment="Center" />
+              <TextBox Grid.Row="1" Grid.Column="1" x:Name="CommitLimitBox" Margin="0,0,0,6"
+                       Text="200" TextChanged="OnAdvancedChanged" />
+
+              <TextBlock Grid.Row="2" Grid.Column="0" Text="History limit" Classes="muted"
+                         VerticalAlignment="Center" />
+              <TextBox Grid.Row="2" Grid.Column="1" x:Name="HistoryLimitBox" Margin="0,0,0,6"
+                       Text="500" TextChanged="OnAdvancedChanged" />
+
+              <TextBlock Grid.Row="3" Grid.Column="0" Text="Cache, MB" Classes="muted"
+                         VerticalAlignment="Center" />
+              <TextBox Grid.Row="3" Grid.Column="1" x:Name="CacheBox" Margin="0,0,0,6"
+                       Text="96" TextChanged="OnAdvancedChanged" />
+
+              <TextBlock Grid.Row="4" Grid.Column="0" Text="Max cached blob, MB" Classes="muted"
+                         VerticalAlignment="Center" />
+              <TextBox Grid.Row="4" Grid.Column="1" x:Name="MaxBlobBox" Margin="0,0,0,6"
+                       Text="8" TextChanged="OnAdvancedChanged" />
+
+              <TextBlock Grid.Row="5" Grid.Column="0" Text="Name policy" Classes="muted"
+                         VerticalAlignment="Center" />
+              <ComboBox Grid.Row="5" Grid.Column="1" x:Name="PolicyBox" Width="160"
+                        HorizontalAlignment="Left" SelectionChanged="OnAdvancedChanged" />
+            </Grid>
+
+            <CheckBox x:Name="ReadOnlyBox" IsCheckedChanged="OnAdvancedChanged">
+              <StackPanel Orientation="Horizontal" Spacing="10">
+                <TextBlock Text="Read-only volume" Width="150" />
+                <TextBlock Classes="muted" Text="Word and Excel need to write lock files next to a file they open" />
+              </StackPanel>
+            </CheckBox>
+            <CheckBox x:Name="KeepOverlayBox" IsCheckedChanged="OnAdvancedChanged">
+              <StackPanel Orientation="Horizontal" Spacing="10">
+                <TextBlock Text="Keep overlay after unmount" Width="150" />
+                <TextBlock Classes="muted" Text="to inspect what was written; gitfs purge removes it later" />
+              </StackPanel>
+            </CheckBox>
+
+            <TextBlock x:Name="AdvancedProblem" Classes="muted" Foreground="#E07B6D"
+                       IsVisible="False" TextWrapping="Wrap" />
+          </StackPanel>
+        </Expander>
       </StackPanel>
 
       <!-- справа: живое превью дерева -->

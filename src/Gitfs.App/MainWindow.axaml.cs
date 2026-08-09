@@ -281,7 +281,7 @@ public partial class MainWindow : Window
             MountButton.IsEnabled = false;
             StatusText.Text = $"mounting {result.MountPoint} …";
             var entry = await Task.Run(() => MountService.Instance.Mount(
-                result.RepositoryPath, result.MountPoint, result.Views));
+                result.RepositoryPath, result.MountPoint, result.Views, result.Options));
 
             _mounts.Add(entry);
             RefreshMounts();

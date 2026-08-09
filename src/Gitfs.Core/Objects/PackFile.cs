@@ -26,16 +26,22 @@ public sealed class PackFile : IDisposable
     public long DeltaBaseCacheHits => _resolved.Hits;
     public long SizeCacheHits => _sizes.Hits;
 
-    private PackFile(MemoryMappedFile mmap, long length, PackIndex index, long cacheBytes)
+    private PackFile(MemoryMappedFile mmap, long length, PackIndex index, long cacheBytes,
+        long? maxObjectBytes)
     {
         _mmap = mmap;
         _length = length;
         _index = index;
-        _resolved = new LruCache<long, (GitObjectType, byte[])>(cacheBytes, e => e.Item2.Length);
+        _resolved = new LruCache<long, (GitObjectType, byte[])>(cacheBytes, e => e.Item2.Length,
+            maxObjectBytes);
         _sizes = new LruCache<ObjectId, (GitObjectType, long)>(SizeCacheEntries, _ => 1);
     }
 
-    public static PackFile Open(string packPath, long deltaBaseCacheBytes = DefaultDeltaBaseCacheBytes)
+    /// <param name="maxObjectBytes">Потолок для одного развёрнутого объекта в
+    /// кэше дельт: «Max cached blob» из настроек монтирования. null — только
+    /// общий бюджет.</param>
+    public static PackFile Open(string packPath, long deltaBaseCacheBytes = DefaultDeltaBaseCacheBytes,
+        long? maxObjectBytes = null)
     {
         var index = PackIndex.Load(Path.ChangeExtension(packPath, ".idx"));
         var length = new FileInfo(packPath).Length;
@@ -43,7 +49,7 @@ public sealed class PackFile : IDisposable
             throw new InvalidDataException($"pack too short: {packPath}");
         var mmap = MemoryMappedFile.CreateFromFile(packPath, FileMode.Open, null, 0,
             MemoryMappedFileAccess.Read);
-        return new PackFile(mmap, length, index, deltaBaseCacheBytes);
+        return new PackFile(mmap, length, index, deltaBaseCacheBytes, maxObjectBytes);
     }
 
     public bool Contains(in ObjectId id) => _index.TryFindOffset(id, out _);
