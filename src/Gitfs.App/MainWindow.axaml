@@ -12,6 +12,11 @@
     <Border Grid.Row="0" Padding="18,14" Background="{DynamicResource GfsSurfaceDeepBrush}">
       <Grid ColumnDefinitions="Auto,*,Auto,Auto">
         <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+          <!-- Знак продукта. Он был нарисован дизайн-отделом, лежал в
+               Assets/icons/mark.svg — и не показывался НИ В ОДНОМ окне:
+               генератор геометрии собирал только уменьшенный вариант. -->
+          <app:Glyph Key="IcMark" Width="24" Height="24" VerticalAlignment="Center"
+                     Stroke="{DynamicResource GfsAccentBrush}" />
           <TextBlock Text="gitfs" FontFamily="Cascadia Mono, Consolas, monospace"
                      FontSize="18" FontWeight="Medium" Foreground="{DynamicResource GfsTextBrush}" />
           <Border Background="{DynamicResource GfsDividerBrush}" CornerRadius="6" Padding="8,3" VerticalAlignment="Center">
@@ -68,9 +73,15 @@
             </ListBox.ItemTemplate>
           </ListBox>
 
-          <!-- пустое состояние: знак, одна фраза, одно действие -->
+          <!-- пустое состояние: знак, одна фраза, одно действие.
+               Знака здесь не было, хотя комментарий его обещал: пустой экран
+               из двух строк текста читается как сбой загрузки, а не как
+               «пока ничего нет». -->
           <StackPanel x:Name="EmptyState" Spacing="12" VerticalAlignment="Center"
                       HorizontalAlignment="Left" Margin="4,0">
+            <app:Glyph Key="IcFolder" Width="34" Height="34" Margin="0,0,0,2"
+                       HorizontalAlignment="Left"
+                       Stroke="{DynamicResource GfsTextFaintBrush}" />
             <TextBlock Text="Nothing is mounted" FontSize="16" Foreground="{DynamicResource GfsTextBrush}" />
             <TextBlock Classes="muted" MaxWidth="330" TextWrapping="Wrap"
                        Text="Point gitfs at a repository and its history shows up as a drive you can browse." />

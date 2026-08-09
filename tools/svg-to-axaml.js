@@ -1,6 +1,12 @@
 const fs=require("fs");
 const dir="src/Gitfs.App/Assets/icons";
-const want=["mark-min","folder","view-branches","view-tags","view-commits","view-dates",
+// «mark» — полный знак продукта, «mark-min» — тот же знак без внутренней
+// детали, для мелких размеров. Раньше собирался только второй, и знака не было
+// ни в одном окне: собрать нечего.
+// «drive» и «file» нужны дереву превью: строки там были голым текстом, хотя
+// комплект знаков для них есть.
+const want=["mark","mark-min","drive","folder","file",
+            "view-branches","view-tags","view-commits","view-dates",
             "view-history","view-system","marker-truncated","marker-submodule"];
 
 const num=s=>parseFloat(s);

@@ -38,7 +38,7 @@ public sealed record MountOptions
 
     /// <summary>Бюджет кэша деревьев и листингов, МБ. Считается в БАЙТАХ
     /// содержимого, а не в числе записей: одно дерево может весить мегабайты.</summary>
-    public int CacheMegabytes { get; init; } = 96;
+    public int CacheMegabytes { get; init; } = 256;
 
     /// <summary>Потолок для одного объекта в кэше, МБ. Крупный блоб не должен
     /// вытеснять собой весь кэш ради одного чтения.</summary>

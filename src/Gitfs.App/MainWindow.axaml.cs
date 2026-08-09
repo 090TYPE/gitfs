@@ -250,7 +250,7 @@ public partial class MainWindow : Window
         Row("uptime", entry.Uptime);
 
         ShowCacheCounters(entry, Row);
-        ShowLogTail();
+        ShowLogTail(entry);
 
         var open = new Button
         {
@@ -305,13 +305,24 @@ public partial class MainWindow : Window
         _ => $"{value / (1024.0 * 1024 * 1024):0.##} GB",
     };
 
-    /// <summary>Хвост журнала приложения (макет 03). Журнал пуст, когда всё
-    /// шло хорошо, — так и сказано; «нет данных» на этом месте заставляло бы
-    /// искать неисправность там, где её нет.</summary>
-    private void ShowLogTail()
+    /// <summary>Хвост журнала ВЫБРАННОГО ТОМА (макет 03). Здесь стоял журнал
+    /// приложения: он одинаков для всех строк таблицы, и переключение тома
+    /// его не меняло — заголовок «LOG» под выделенной строкой обещал журнал
+    /// этого тома, а показывал исключения самого GUI.
+    ///
+    /// Три исхода, и все три разные: строки есть; журнал пуст (всё шло
+    /// хорошо); журнала не достать (том держит другой процесс и не отвечает).
+    /// Слить последние два в «empty» значило бы сказать «всё в порядке» там,
+    /// где мы просто не знаем.</summary>
+    private void ShowLogTail(MountEntry entry)
     {
         SidePanel.Children.Add(Heading("LOG"));
-        var lines = Program.TailLog(6);
+        var lines = MountService.Instance.LogFor(entry.MountPoint, 6);
+        if (lines is null)
+        {
+            SidePanel.Children.Add(Muted("out of reach: this volume is held by another process"));
+            return;
+        }
         if (lines.Count == 0)
         {
             SidePanel.Children.Add(Muted("empty — nothing has gone wrong yet"));

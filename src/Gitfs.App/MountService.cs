@@ -94,6 +94,51 @@ public sealed class MountService
         }
     }
 
+    /// <summary>Что записал ЭТОТ ТОМ (макет 03: «просмотр log.txt» в панели
+    /// деталей). Панель показывала журнал ПРИЛОЖЕНИЯ — файл, в который пишутся
+    /// исключения самого GUI. Он одинаков для всех строк таблицы, и выбор тома
+    /// его не менял: подпись «LOG» под выделенным томом обещала одно, а
+    /// показывала другое.
+    ///
+    /// Сначала спрашиваем свой MountLog — это тот же объект, из которого том
+    /// строит .gitfs/log.txt, только без похода в файловую систему. Если том
+    /// смонтирован ДРУГИМ процессом, читаем сам файл на томе: он там и есть,
+    /// ради этого вьюха .gitfs/ и существует.
+    ///
+    /// Возвращает null, когда журнала не достать вообще, — панель обязана
+    /// отличить «пусто» от «неизвестно».</summary>
+    public IReadOnlyList<string>? LogFor(string mountPoint, int count)
+    {
+        LiveMount? live;
+        lock (_gate) _live.TryGetValue(mountPoint, out live);
+        if (live?.Log is { } log) return Tail(log.Lines, count);
+
+        try
+        {
+            var path = Path.Combine(mountPoint.EndsWith(':') ? mountPoint + Path.DirectorySeparatorChar : mountPoint,
+                ".gitfs", "log.txt");
+            if (!File.Exists(path)) return null;
+
+            // Чтение идёт ЧЕРЕЗ ТОМ, то есть через наш же адаптер. Зависший
+            // том не имеет права заморозить окно, поэтому у чтения есть срок,
+            // и по его истечении панель честно скажет, что не дозналась.
+            var read = Task.Run(() => File.ReadAllLines(path));
+            return read.Wait(TimeSpan.FromSeconds(2)) ? Tail(read.Result, count) : null;
+        }
+        catch (Exception e)
+        {
+            Program.Log("log-for-" + mountPoint, e);
+            return null;
+        }
+    }
+
+    /// <summary>Хвост журнала тома — отдельно, чтобы его можно было проверить
+    /// без живого монтирования.</summary>
+    internal static IReadOnlyList<string> TailOf(MountLog log, int count) => Tail(log.Lines, count);
+
+    private static IReadOnlyList<string> Tail(IReadOnlyList<string> lines, int count) =>
+        lines.Count <= count ? lines : lines.Skip(lines.Count - count).ToList();
+
     public MountStats? StatsFor(string mountPoint)
     {
         LiveMount? live;

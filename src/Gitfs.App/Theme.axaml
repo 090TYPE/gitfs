@@ -31,6 +31,7 @@
       <Color x:Key="GfsWarn">#E0B26D</Color>
       <Color x:Key="GfsErr">#E07B6D</Color>
       <Color x:Key="GfsStrike">#595d6c</Color>
+
     </ResourceDictionary>
 
     <ResourceDictionary x:Key="Light">
@@ -52,6 +53,7 @@
       <Color x:Key="GfsWarn">#8a5c00</Color>
       <Color x:Key="GfsErr">#a63b2c</Color>
       <Color x:Key="GfsStrike">#9397ab</Color>
+
     </ResourceDictionary>
 
   </ResourceDictionary.ThemeDictionaries>

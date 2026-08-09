@@ -20,7 +20,14 @@ namespace Gitfs.App;
 /// это ассеты, а не шаг сборки.</summary>
 internal static class IconRenderer
 {
-    /// <summary>Вьюха → ключ геометрии в Icons.axaml.</summary>
+    /// <summary>Вьюха → ключ геометрии в Icons.axaml.
+    ///
+    /// Знаков маркеров (.truncated, .gitfs-submodule) здесь НЕТ, и это не
+    /// недоделка. Иконку отдельному ФАЙЛУ Проводник берёт по расширению — из
+    /// реестра, для всей системы сразу. Записать туда «.truncated выглядит
+    /// так» значит поменять вид этих файлов у человека везде, включая те, что
+    /// к gitfs отношения не имеют. Ради украшения двух служебных имён такого
+    /// не делают; сами имена говорят о себе словами, а не значком.</summary>
     public static readonly (string View, string Key)[] Views =
     {
         ("branches", "IcViewBranches"),
@@ -29,8 +36,15 @@ internal static class IconRenderer
         ("dates", "IcViewDates"),
         ("history", "IcViewHistory"),
         (".gitfs", "IcViewSystem"),
-        ("volume", "IcMarkMin"),
+        ("volume", "IcMark"),
     };
+
+    /// <summary>Мелкие размеры рисуются упрощённым знаком. Ради этого он и
+    /// нарисован: в 16 px внутренняя деталь полного знака сливается в кашу —
+    /// три линии и две точки на площади с ноготь. Раньше упрощённый брали
+    /// ВСЕГДА, и в 256 px том получал знак без половины смысла.</summary>
+    private static string KeyFor(string key, int size) =>
+        key == "IcMark" && size <= 32 ? "IcMarkMin" : key;
 
     private static readonly int[] Sizes = { 16, 32, 48, 256 };
 
@@ -43,7 +57,7 @@ internal static class IconRenderer
             var images = new List<(int Size, byte[] Png)>();
             foreach (var size in Sizes)
             {
-                if (Render(key, size) is { } png) images.Add((size, png));
+                if (Render(KeyFor(key, size), size) is { } png) images.Add((size, png));
             }
             if (images.Count == 0)
             {
@@ -78,7 +92,7 @@ internal static class IconRenderer
         var bitmap = new RenderTargetBitmap(new PixelSize(size, size), new Vector(96, 96));
         using (var context = bitmap.CreateDrawingContext())
         {
-            var brush = new SolidColorBrush(Color.Parse("#9184D9"));
+            var brush = new SolidColorBrush(Color.Parse(Brand.AccentHex));
             using (context.PushTransform(Matrix.CreateScale(scale, scale)
                                          * Matrix.CreateTranslation(offset, offset)))
             {

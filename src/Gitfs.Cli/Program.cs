@@ -74,7 +74,7 @@ static void PrintUsage()
           --history-ref=<ref|sha>      show history as of this point, not HEAD
           --commit-limit=<n>           how many commits commits/ lists (200)
           --history-limit=<n>          version ceiling per file (500)
-          --cache-mb=<n>               tree and listing cache budget (96)
+          --cache-mb=<n>               tree and listing cache budget (256)
           --max-blob-mb=<n>            ceiling for one cached object (8)
         """);
 }

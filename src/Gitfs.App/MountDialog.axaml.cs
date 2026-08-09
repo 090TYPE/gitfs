@@ -91,7 +91,24 @@ public partial class MountDialog : Window
         try { entries = RecentRepositories.Instance.Load().ToList(); }
         catch (Exception e) { Program.Log("recent-chips", e); return; }
 
-        RecentChips.IsVisible = entries.Count > 0;
+        // Пусто — тоже состояние, и о нём надо СКАЗАТЬ. Раньше полоса просто
+        // исчезала, и на первом запуске под полем пути зияла дыра: человек не
+        // знал, чего там не хватает и должно ли что-то быть.
+        if (entries.Count == 0)
+        {
+            RecentChips.IsVisible = true;
+            RecentChips.Children.Add(new TextBlock
+            {
+                Text = "no recent repositories yet — the ones you mount show up here",
+                Classes = { "muted" },
+                Margin = new Thickness(0, 6, 0, 0),
+                Foreground = Palette.Faint,
+                TextWrapping = TextWrapping.Wrap,
+            });
+            return;
+        }
+
+        RecentChips.IsVisible = true;
         foreach (var entry in entries)
         {
             var chip = new Button
@@ -132,29 +149,47 @@ public partial class MountDialog : Window
         var mount = MountPoint ?? "G:";
         var selected = SelectedViews();
 
-        void Line(string text, int indent, bool enabled, bool accent = false)
+        // Строка дерева — знак и текст. Знаки были нарисованы дизайн-отделом
+        // (drive/folder/file), а превью показывало голый текст: единственное
+        // место в продукте, где видно, ЧТО именно получится, обходилось без
+        // половины комплекта.
+        void Line(string text, int indent, bool enabled, string glyph, bool accent = false)
         {
-            TreePreview.Children.Add(new TextBlock
+            var ink = !enabled ? Palette.Strike : accent ? Palette.AccentInk : Palette.Text;
+            var row = new StackPanel
             {
-                Text = new string(' ', indent) + text,
+                Orientation = Orientation.Horizontal,
+                Spacing = 6,
+                Margin = new Thickness(indent * 7, 0, 0, 0),
+            };
+            var mark = Glyph.Make(glyph, 14, ink, thickness: 2.0);
+            mark.VerticalAlignment = VerticalAlignment.Center;
+            mark.Opacity = enabled ? 1 : 0.55;
+            row.Children.Add(mark);
+            row.Children.Add(new TextBlock
+            {
+                Text = text,
                 FontFamily = new FontFamily("Cascadia Mono, Consolas, monospace"),
                 FontSize = 12,
-                Foreground = !enabled ? Palette.Strike : accent ? Palette.AccentInk : Palette.Text,
+                VerticalAlignment = VerticalAlignment.Center,
+                Foreground = ink,
                 TextDecorations = enabled ? null : TextDecorations.Strikethrough,
             });
+            TreePreview.Children.Add(row);
         }
 
-        Line(mount + "\\", 0, true);
+        Line(mount + "\\", 0, true, "IcDrive");
         foreach (var view in new[] { "branches", "tags", "commits", "dates", "history" })
-            Line(view + "\\", 2, selected.Contains(view), view == "history");
+            Line(view + "\\", 1, selected.Contains(view),
+                "IcView" + char.ToUpperInvariant(view[0]) + view[1..], view == "history");
 
         if (selected.Contains("history"))
         {
-            Line("src\\", 4, true);
-            Line("Program.cs\\", 6, true, accent: true);
-            Line("0001-a3f9c21.cs", 8, true);
-            Line("0002-8b04e77.cs", 8, true);
-            Line("latest.cs", 8, true, accent: true);
+            Line("src\\", 2, true, "IcFolder");
+            Line("Program.cs\\", 3, true, "IcFolder", accent: true);
+            Line("0001-a3f9c21.cs", 4, true, "IcFile");
+            Line("0002-8b04e77.cs", 4, true, "IcFile");
+            Line("latest.cs", 4, true, "IcFile", accent: true);
         }
 
         var repoOk = !string.IsNullOrWhiteSpace(RepoBox.Text)
@@ -250,7 +285,7 @@ public partial class MountDialog : Window
             HistoryRef = string.IsNullOrWhiteSpace(HistoryRefBox.Text) ? null : HistoryRefBox.Text!.Trim(),
             CommitLimit = Number(CommitLimitBox, 200),
             HistoryLimit = Number(HistoryLimitBox, 500),
-            CacheMegabytes = Number(CacheBox, 96),
+            CacheMegabytes = Number(CacheBox, 256),
             MaxCachedBlobMegabytes = Number(MaxBlobBox, 8),
             NamePolicy = PolicyBox.SelectedIndex == 1
                 ? Gitfs.Vfs.NamePolicyKind.Portable

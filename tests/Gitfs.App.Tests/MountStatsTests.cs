@@ -64,7 +64,58 @@ public class MountStatsTests
             "the second listing of the same directory was not a cache hit");
     }
 
-    // ---------- хвост журнала ----------
+    // ---------- журнал ТОМА ----------
+
+    /// <summary>Чужой том — не пустой журнал. Панель показывала здесь журнал
+    /// ПРИЛОЖЕНИЯ: он одинаков для всех строк таблицы, и переключение тома его
+    /// не меняло. Разница видна только на трёх исходах: строки / пусто /
+    /// не достать. Слить два последних значило бы утверждать «всё хорошо» там,
+    /// где мы ничего не знаем.</summary>
+    [Fact]
+    public void A_volume_this_process_does_not_hold_gives_no_log_rather_than_an_empty_one()
+    {
+        var service = new MountService();
+        Assert.Null(service.LogFor("Q:", 6));
+        Assert.Null(service.LogFor(Path.Combine(Path.GetTempPath(), "gitfs-nowhere"), 6));
+    }
+
+    /// <summary>Журнал тома читается с самого тома, если его держит другой
+    /// процесс. Подкладываем настоящий .gitfs/log.txt в каталог — ровно то,
+    /// что увидит панель на смонтированной точке-папке.</summary>
+    [Fact]
+    public void A_volume_held_elsewhere_is_read_through_its_own_gitfs_folder()
+    {
+        var point = Path.Combine(Path.GetTempPath(), "gitfs-point-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Combine(point, ".gitfs"));
+        try
+        {
+            File.WriteAllLines(Path.Combine(point, ".gitfs", "log.txt"),
+                Enumerable.Range(1, 9).Select(i => $"12:00:0{i} pack-reopened line {i}"));
+
+            var tail = new MountService().LogFor(point, 4);
+            Assert.NotNull(tail);
+            Assert.Equal(4, tail!.Count);
+            Assert.EndsWith("line 9", tail[^1]);      // свежие внизу
+            Assert.EndsWith("line 6", tail[0]);
+        }
+        finally { try { Directory.Delete(point, true); } catch (IOException) { } }
+    }
+
+    /// <summary>Свой том отвечает из памяти, без похода в файловую систему:
+    /// это тот же MountLog, из которого строится .gitfs/log.txt.</summary>
+    [Fact]
+    public void A_volume_this_process_holds_answers_from_its_own_log()
+    {
+        var log = new Gitfs.Vfs.MountLog();
+        log.Add("pack-reopened", "packs changed under the volume");
+        log.Add("escaped", "aux.txt");
+
+        var tail = MountService.TailOf(log, 1);
+        Assert.Single(tail);
+        Assert.Contains("aux.txt", tail[0]);
+    }
+
+    // ---------- хвост журнала приложения ----------
 
     [Fact]
     public void An_empty_log_is_an_empty_tail_and_not_a_crash()

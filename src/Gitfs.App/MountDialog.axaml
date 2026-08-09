@@ -1,5 +1,6 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:app="using:Gitfs.App"
         x:Class="Gitfs.App.MountDialog"
         Title="Mount repository" Width="820" Height="660" MinHeight="420"
         WindowStartupLocation="CenterOwner">
@@ -58,55 +59,40 @@
             <StackPanel Spacing="8">
               <CheckBox x:Name="ViewBranches" IsChecked="True" IsCheckedChanged="OnViewToggled">
                 <StackPanel Orientation="Horizontal" Spacing="10">
-                  <Canvas Width="16" Height="16" VerticalAlignment="Center">
-                    <Canvas.RenderTransform><ScaleTransform ScaleX="0.667" ScaleY="0.667" /></Canvas.RenderTransform>
-                    <Path Data="{StaticResource IcViewBranchesStroke}" Stroke="{DynamicResource GfsTextMutedBrush}" StrokeThickness="1.7"
-                          StrokeLineCap="Round" StrokeJoin="Round" />
-                  </Canvas>
+                  <app:Glyph Key="IcViewBranches" Width="16" Height="16" Thickness="2.0"
+                             VerticalAlignment="Center" Stroke="{DynamicResource GfsTextMutedBrush}" />
                   <TextBlock Text="branches" Classes="mono" Width="72" />
                   <TextBlock Text="every branch as a live working tree" Classes="muted" />
                 </StackPanel>
               </CheckBox>
               <CheckBox x:Name="ViewTags" IsChecked="True" IsCheckedChanged="OnViewToggled">
                 <StackPanel Orientation="Horizontal" Spacing="10">
-                  <Canvas Width="16" Height="16" VerticalAlignment="Center">
-                    <Canvas.RenderTransform><ScaleTransform ScaleX="0.667" ScaleY="0.667" /></Canvas.RenderTransform>
-                    <Path Data="{StaticResource IcViewTagsStroke}" Stroke="{DynamicResource GfsTextMutedBrush}" StrokeThickness="1.7"
-                          StrokeLineCap="Round" StrokeJoin="Round" />
-                  </Canvas>
+                  <app:Glyph Key="IcViewTags" Width="16" Height="16" Thickness="2.0"
+                             VerticalAlignment="Center" Stroke="{DynamicResource GfsTextMutedBrush}" />
                   <TextBlock Text="tags" Classes="mono" Width="72" />
                   <TextBlock Text="released versions, frozen" Classes="muted" />
                 </StackPanel>
               </CheckBox>
               <CheckBox x:Name="ViewCommits" IsChecked="True" IsCheckedChanged="OnViewToggled">
                 <StackPanel Orientation="Horizontal" Spacing="10">
-                  <Canvas Width="16" Height="16" VerticalAlignment="Center">
-                    <Canvas.RenderTransform><ScaleTransform ScaleX="0.667" ScaleY="0.667" /></Canvas.RenderTransform>
-                    <Path Data="{StaticResource IcViewCommitsStroke}" Stroke="{DynamicResource GfsTextMutedBrush}" StrokeThickness="1.7"
-                          StrokeLineCap="Round" StrokeJoin="Round" />
-                  </Canvas>
+                  <app:Glyph Key="IcViewCommits" Width="16" Height="16" Thickness="2.0"
+                             VerticalAlignment="Center" Stroke="{DynamicResource GfsTextMutedBrush}" />
                   <TextBlock Text="commits" Classes="mono" Width="72" />
                   <TextBlock Text="the last 200 commits by sha" Classes="muted" />
                 </StackPanel>
               </CheckBox>
-              <CheckBox x:Name="ViewDates" IsChecked="True" IsCheckedChanged="OnViewToggled">
+              <CheckBox x:Name="ViewDates" IsCheckedChanged="OnViewToggled">
                 <StackPanel Orientation="Horizontal" Spacing="10">
-                  <Canvas Width="16" Height="16" VerticalAlignment="Center">
-                    <Canvas.RenderTransform><ScaleTransform ScaleX="0.667" ScaleY="0.667" /></Canvas.RenderTransform>
-                    <Path Data="{StaticResource IcViewDatesStroke}" Stroke="{DynamicResource GfsTextMutedBrush}" StrokeThickness="1.7"
-                          StrokeLineCap="Round" StrokeJoin="Round" />
-                  </Canvas>
+                  <app:Glyph Key="IcViewDates" Width="16" Height="16" Thickness="2.0"
+                             VerticalAlignment="Center" Stroke="{DynamicResource GfsTextMutedBrush}" />
                   <TextBlock Text="dates" Classes="mono" Width="72" />
                   <TextBlock Text="the same commits, filed by day" Classes="muted" />
                 </StackPanel>
               </CheckBox>
               <CheckBox x:Name="ViewHistory" IsChecked="True" IsCheckedChanged="OnViewToggled">
                 <StackPanel Orientation="Horizontal" Spacing="10">
-                  <Canvas Width="16" Height="16" VerticalAlignment="Center">
-                    <Canvas.RenderTransform><ScaleTransform ScaleX="0.667" ScaleY="0.667" /></Canvas.RenderTransform>
-                    <Path Data="{StaticResource IcViewHistoryStroke}" Stroke="{DynamicResource GfsAccentInkBrush}" StrokeThickness="1.7"
-                          StrokeLineCap="Round" StrokeJoin="Round" />
-                  </Canvas>
+                  <app:Glyph Key="IcViewHistory" Width="16" Height="16" Thickness="2.0"
+                             VerticalAlignment="Center" Stroke="{DynamicResource GfsAccentInkBrush}" />
                   <TextBlock Text="history" Classes="mono" Width="72" Foreground="{DynamicResource GfsAccentInkBrush}" />
                   <TextBlock Text="each file opens as a folder of its versions"
                              Classes="muted" Foreground="{DynamicResource GfsAccentInkBrush}" />
@@ -148,7 +134,7 @@
               <TextBlock Grid.Row="3" Grid.Column="0" Text="Cache, MB" Classes="muted"
                          VerticalAlignment="Center" />
               <TextBox Grid.Row="3" Grid.Column="1" x:Name="CacheBox" Margin="0,0,0,6"
-                       Text="96" TextChanged="OnAdvancedChanged" />
+                       Text="256" TextChanged="OnAdvancedChanged" />
 
               <TextBlock Grid.Row="4" Grid.Column="0" Text="Max cached blob, MB" Classes="muted"
                          VerticalAlignment="Center" />
@@ -161,12 +147,24 @@
                         HorizontalAlignment="Left" SelectionChanged="OnAdvancedChanged" />
             </Grid>
 
-            <CheckBox x:Name="ReadOnlyBox" IsCheckedChanged="OnAdvancedChanged">
+            <!-- Включено по умолчанию — так в макете (index.html:246), и на то
+                 есть причина сильнее вкуса: запись на этот том НЕ доходит до
+                 репозитория, она уходит в песочницу, которая исчезнет вместе с
+                 томом. Человек, правящий файл в G:\branches\main\ и уверенный,
+                 что правит свой репозиторий, теряет работу молча. Снять галку —
+                 осознанное действие, и подпись говорит, когда это нужно. -->
+            <CheckBox x:Name="ReadOnlyBox" IsChecked="True" IsCheckedChanged="OnAdvancedChanged">
               <StackPanel Orientation="Horizontal" Spacing="10">
                 <TextBlock Text="Read-only volume" Width="150" />
-                <TextBlock Classes="muted" Text="Word and Excel need to write lock files next to a file they open" />
+                <TextBlock Classes="muted" Text="uncheck for Word and Excel: they write lock files next to an opened file" />
               </StackPanel>
             </CheckBox>
+            <!-- А ВОТ ЗДЕСЬ МЫ ОТ МАКЕТА ОТСТУПАЕМ, и намеренно. В макете
+                 (index.html:249) галка стоит, но оставленная песочница — это
+                 ровно то, что бриф §4.2 велит показывать как деградацию:
+                 «осиротевший overlay — warning». Включив её по умолчанию, мы бы
+                 получили продукт, который сразу после первого размонтирования
+                 жалуется сам на себя. Умолчание — убирать за собой. -->
             <CheckBox x:Name="KeepOverlayBox" IsCheckedChanged="OnAdvancedChanged">
               <StackPanel Orientation="Horizontal" Spacing="10">
                 <TextBlock Text="Keep overlay after unmount" Width="150" />
@@ -196,7 +194,7 @@
     <Border Grid.Row="1" Background="{DynamicResource GfsFooterBrush}" Padding="16,12">
       <Grid ColumnDefinitions="*,Auto,Auto">
         <TextBlock Grid.Column="0" x:Name="FooterFlags" Classes="muted"
-                   VerticalAlignment="Center" Text="read-only · overlay kept" />
+                   VerticalAlignment="Center" Text="read-only" />
         <Button Grid.Column="1" Classes="secondary" Content="Cancel"
                 Margin="0,0,8,0" Click="OnCancel" />
         <Button Grid.Column="2" x:Name="MountAction" Classes="primary"

@@ -13,15 +13,15 @@ namespace Gitfs.App;
 /// разный цвет, и без варианта вернулся бы тёмный на светлом фоне.</summary>
 internal static class Palette
 {
-    public static IBrush Text => Brush("GfsTextBrush", "#e9e9ed");
-    public static IBrush Muted => Brush("GfsTextMutedBrush", "#9397ab");
-    public static IBrush Faint => Brush("GfsTextFaintBrush", "#75798c");
-    public static IBrush Accent => Brush("GfsAccentBrush", "#9184d9");
-    public static IBrush AccentInk => Brush("GfsAccentInkBrush", "#d2cefd");
-    public static IBrush Ok => Brush("GfsOkBrush", "#7FB77E");
-    public static IBrush Warn => Brush("GfsWarnBrush", "#E0B26D");
-    public static IBrush Err => Brush("GfsErrBrush", "#E07B6D");
-    public static IBrush Strike => Brush("GfsStrikeBrush", "#595d6c");
+    public static IBrush Text => Brush("GfsTextBrush", Brand.TextHex);
+    public static IBrush Muted => Brush("GfsTextMutedBrush", Brand.TextMutedHex);
+    public static IBrush Faint => Brush("GfsTextFaintBrush", Brand.TextFaintHex);
+    public static IBrush Accent => Brush("GfsAccentBrush", Brand.AccentHex);
+    public static IBrush AccentInk => Brush("GfsAccentInkBrush", Brand.AccentInkHex);
+    public static IBrush Ok => Brush("GfsOkBrush", Brand.OkHex);
+    public static IBrush Warn => Brush("GfsWarnBrush", Brand.WarnHex);
+    public static IBrush Err => Brush("GfsErrBrush", Brand.ErrHex);
+    public static IBrush Strike => Brush("GfsStrikeBrush", Brand.StrikeHex);
 
     public static IBrush ForStatus(Gitfs.Diagnostics.CheckStatus status) => status switch
     {

@@ -40,7 +40,7 @@ public sealed class LruCache<TKey, TValue> where TKey : notnull
     public long Misses => Interlocked.Read(ref _misses);
 
     /// <summary>Сколько байт (единиц стоимости) кэш держит прямо сейчас.
-    /// Нужно проверкам и панели тома: «96 МБ» в диалоге обязано быть тем же
+    /// Нужно проверкам и панели тома: «256 МБ» в диалоге обязано быть тем же
     /// числом, что и здесь.</summary>
     public long Used { get { lock (_gate) return _used; } }
 

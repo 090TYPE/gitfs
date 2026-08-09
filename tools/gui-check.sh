@@ -219,8 +219,17 @@ done
 if [ -z "$mwin" ]; then
     echo "fail the manager window never appeared"; tail -20 /tmp/mgr.log; status=1
 else
+    # Окно X11 появляется РАНЬШЕ, чем в нём что-то разложено: нажатие,
+    # отправленное сразу, попадает в пустоту, и проверка падает через раз.
+    # Такая проверка хуже отсутствующей — к её отказам привыкают.
+    xdotool windowactivate --sync "$mwin" 2>/dev/null
+    sleep 1.5
     eval "$(xdotool getwindowgeometry --shell "$mwin")"
-    xdotool mousemove $((X + 103)) $((Y + 372)) click 1      # «Mount a repository»
+    # Кнопка пустого состояния. Координата привязана к его вёрстке и
+    # переехала, когда над кнопкой появился знак папки: проверка это и
+    # поймала — «диалог не открылся». Меняется вёрстка пустого экрана —
+    # координату надо перемерить по снимку linux-app.png, а не гадать.
+    xdotool mousemove $((X + 103)) $((Y + 396)) click 1      # «Mount a repository»
     dw=""
     for _ in $(seq 1 40); do
         dw="$(xdotool search --name 'Mount repository' 2>/dev/null | head -1)"
@@ -228,7 +237,13 @@ else
         sleep 0.5
     done
     if [ -z "$dw" ]; then
+        # Без снимка и журнала эта строка не даёт НИЧЕГО: промах мимо кнопки и
+        # падение диалога выглядят одинаково.
         echo "fail the mount dialog did not open from the manager"; status=1
+        import -display :99 -window root "$out/linux-manager-noclick.png" 2>/dev/null \
+            || xwd -display :99 -root | convert xwd:- "$out/linux-manager-noclick.png"
+        echo "      screenshot: $out/linux-manager-noclick.png"
+        tail -20 /tmp/mgr.log
     else
         eval "$(xdotool getwindowgeometry --shell "$dw")"
         xdotool mousemove $((X + WIDTH - 115)) $((Y + HEIGHT - 30)) click 1   # «Mount to …»
@@ -285,6 +300,35 @@ else
     echo "fail the two themes render the same: light $light_mean vs dark $dark_mean"
     status=1
 fi
+
+echo
+echo "=== акцент наш, а не системный ==="
+# Fluent красит флажки, переключатели и выделенную строку АКЦЕНТОМ СИСТЕМЫ.
+# На машине с синим акцентом окно получало второй «главный цвет», и наш был
+# не главный. Глазом это ловится только при сравнении со снимком макета,
+# поэтому — счётом пикселей.
+#
+# Признак: синий/голубой, которого в палитре Nocturne нет ни в одной роли.
+#   B-R > 60 И G-R > 30   —  #0078D4 подходит, #9184d9 (B-R 72, G-R −13) нет.
+# Порог в пикселях, а не ноль: на границах после сжатия появляются смешанные
+# цвета, и ноль сделал бы проверку капризной.
+system_blue() {                            # system_blue <png>
+    convert "$1" -resize 640x450\! \
+        -fx "(b-r>0.235 && g-r>0.118) ? 1 : 0" \
+        -format '%[fx:int(mean*w*h)]' info: 2>/dev/null || echo -1
+}
+for shot in linux-manager-mounted linux-dialog; do
+    [ -f "$out/$shot.png" ] || continue
+    blue="$(system_blue "$out/$shot.png")"
+    if [ "${blue:-0}" -lt 0 ]; then
+        echo "fail could not measure $shot"; status=1
+    elif [ "${blue:-0}" -le 200 ]; then
+        echo "ok    $shot has no system accent ($blue px)"
+    else
+        echo "fail $shot is painted with the system accent, not ours ($blue px)"
+        status=1
+    fi
+done
 
 echo
 echo "=== the first-run screen ==="

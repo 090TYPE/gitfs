@@ -23,7 +23,21 @@
   </Application.Resources>
 
   <Application.Styles>
-    <FluentTheme />
+    <!-- Акцент Fluent — это акцент СИСТЕМЫ: флажки, переключатели и
+         выделенная строка списка красились синим по умолчанию Windows (и
+         оранжевым у того, кто выбрал оранжевый). В одном окне уживались два
+         «главных цвета», и наш был не главный.
+
+         Переопределить его через <Color x:Key="SystemAccentColor"> в своём
+         словаре НЕ выходит — проверено на живом окне, выделение осталось
+         синим: тема разворачивает палитру у себя внутри, до наших ресурсов.
+         Работает только эта точка. -->
+    <FluentTheme>
+      <FluentTheme.Palettes>
+        <ColorPaletteResources x:Key="Dark" Accent="#9184d9" />
+        <ColorPaletteResources x:Key="Light" Accent="#796cbf" />
+      </FluentTheme.Palettes>
+    </FluentTheme>
 
     <!-- Палитра Nocturne из макета дизайн-отдела -->
     <Style Selector="Window">
