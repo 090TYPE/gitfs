@@ -72,9 +72,17 @@ public sealed class HistoryView : ViewBase
         var head = HeadCommit(snapshot);
         if (head is null) return null;
         var entry = ResolveDisplayPath(snapshot, head.Tree, segments);
-        return entry is { Mode: GitFileMode.Directory }
+        if (entry is null) return null;
+
+        // Что перечислено — то и разрешается. Раньше сюда доходили только
+        // директории, а симлинки и гитлинки List отдавал как есть — и
+        // получался фантом: имя видно в листинге, но Lookup по нему отвечает
+        // «нет такого». `ls -l` на такой папке падает на записи, которую сам
+        // же и перечислил. Папкой версий они по-прежнему не раскрываются:
+        // цепочка версий символической ссылки бессмысленна (ревью M4).
+        return entry.Value.Mode == GitFileMode.Directory
             ? NodeInfo.Directory(head.Committer.When)
-            : null;
+            : ToNodeInfo(snapshot, entry.Value, head.Committer.When);
     }
 
     public override IEnumerable<DirEntry> List(RepoSnapshot snapshot, IReadOnlyList<string> segments)

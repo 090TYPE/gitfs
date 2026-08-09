@@ -48,6 +48,49 @@ fi
 echo
 tools/acceptance.sh /mnt/gitfs /work || status=1
 
+# Симлинки: у самого gitfs их в дереве нет, поэтому проверять readlink на
+# нём нечем — а без этого весь путь в адаптере не исполняется ничем. Берём
+# отдельный репозиторий, где они есть, и монтируем его вторым томом.
+echo
+echo "=== symlinks, on a repository that actually has them ==="
+git init -q /tmp/symrepo
+git -C /tmp/symrepo config user.email gitfs@example.com
+git -C /tmp/symrepo config user.name gitfs
+printf 'real content here\n' > /tmp/symrepo/target.txt
+ln -sfn target.txt /tmp/symrepo/link.txt
+mkdir -p /tmp/symrepo/nested && ln -sfn ../target.txt /tmp/symrepo/nested/up.txt
+# и битая ссылка: цель отсутствует, но сам симлинк валиден
+ln -sfn does-not-exist.txt /tmp/symrepo/broken.txt
+git -C /tmp/symrepo add -A
+git -C /tmp/symrepo commit -qm "symlinks"
+
+mkdir -p /mnt/sym
+/tmp/dist/gitfs mount /tmp/symrepo /mnt/sym &
+sym_pid=$!
+for _ in $(seq 1 40); do mountpoint -q /mnt/sym && break; sleep 0.25; done
+if mountpoint -q /mnt/sym; then
+    # Полную приёмку сюда не гоняем: она сверяется с файлами самого gitfs
+    # (LICENSE, src/Gitfs.Core/…), которых в этом репозитории нет. Здесь
+    # проверяется ровно то, ради чего он и создан.
+    B=$(git -C /tmp/symrepo symbolic-ref --short HEAD)
+    echo "--- readlink через ядро ---"
+    for l in link.txt nested/up.txt broken.txt; do
+        got="$(readlink "/mnt/sym/branches/$B/$l" 2>&1)"
+        want="$(git -C /tmp/symrepo cat-file blob "$B:$l")"
+        if [ "$got" = "$want" ]; then
+            echo "ok    readlink $l -> $got"
+        else
+            echo "fail  readlink $l gave '$got', git says '$want'"; status=1
+        fi
+    done
+    # битая ссылка обязана остаться ссылкой, а не превратиться в файл
+    [ -L "/mnt/sym/branches/$B/broken.txt" ] \
+        || { echo "fail  broken.txt is not a symlink"; status=1; }
+    kill -TERM "$sym_pid" 2>/dev/null; wait "$sym_pid" 2>/dev/null
+else
+    echo "fail  the symlink volume never appeared"; status=1
+fi
+
 # Второй прогон по ТОМУ ЖЕ тому: набор обязан быть повторяемым. Пока
 # сценарии записи трогали те же файлы, что читают проверки выше, второй
 # прогон падал на следах первого — и набор, который можно запустить один

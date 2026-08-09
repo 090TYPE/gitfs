@@ -124,7 +124,13 @@ public sealed class MountService
             mount = GitfsFuseMount.Mount(target, mountPoint, readOnly: false);
 #endif
         }
-        catch { overlay.Dispose(); throw; } // не смонтировались — не оставляем каталог
+        // Освобождаем ЦЕЛЬ, а не только песочницу: через неё уходит и
+        // SnapshotManager, а он держит каждый packfile отображённым в память
+        // без FILE_SHARE_DELETE. После неудачного монтирования репозиторий
+        // нельзя было ни удалить, ни переместить, пока не отработает сборщик
+        // мусора. Успешный путь этим не страдал — там всё освобождает
+        // GitfsMount.Dispose; текла ровно ветка отказа.
+        catch { target.Dispose(); throw; }
         lock (_gate) _live[mountPoint] = new LiveMount(mount, overlay);
 #endif
         var entry = new MountEntry(new DirectoryInfo(repoPath).Name, repoPath, mountPoint,

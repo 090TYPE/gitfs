@@ -110,10 +110,28 @@ internal sealed unsafe class GitfsFuseFileSystem : IDisposable
         if (!opened.TryGet(out var handle)) return -Translate(opened.Error);
         try
         {
+            // Lookup выше брал СВОЮ аренду снапшота и отпустил её; Open взял
+            // новую, и между ними эпоха могла смениться. Тогда мы бы прочли
+            // содержимое обычного файла и отдали его ядру как путь — а ядро
+            // по нему пойдёт. Хендл несёт узел, к которому его открыли, и это
+            // единственная достоверная величина внутри колбэка. Заодно
+            // покрывается случай, когда путь перекрыт файлом из песочницы.
+            if (handle.Info.Kind != NodeKind.Symlink) return -Errno.Inval;
+
             var capacity = (int)Math.Min(size - 1, 4096);         // место под завершающий ноль
             var target = new byte[capacity];
             var read = _target.Read(handle, 0, target);
             if (!read.TryGet(out var count)) return -Translate(read.Error);
+
+            // Пустая цель — не цель. Такой симлинк ядро трактует как переход
+            // в собственный родительский каталог: `ls -l` печатает пустоту
+            // после стрелки, `cat` даёт EISDIR, а всё, что ходит по ссылкам,
+            // спускается в родителя снова и снова до ELOOP. Ноль здесь
+            // означает, что блоб не прочитался: размер узла берётся из
+            // TryGetHeader, чей результат вьюха не проверяет, и у
+            // отсутствующего объекта он равен нулю — то есть на частичном
+            // клоне это штатная ситуация, а не порча.
+            if (count == 0) return -Errno.IO;
 
             new Span<byte>(target, 0, count).CopyTo(new Span<byte>(buffer, count));
             buffer[count] = 0;

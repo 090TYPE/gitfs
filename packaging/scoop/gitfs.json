@@ -3,7 +3,9 @@
     "description": "Mounts a git repository as a drive. Commits are folders; a file is a folder too, holding every version of itself.",
     "homepage": "https://github.com/090TYPE/gitfs",
     "license": "MIT",
+    "depends": "extras/dotnet-runtime",
     "notes": [
+        "gitfs is framework-dependent: without the .NET 8 runtime it exits before Main.",
         "gitfs needs the WinFsp driver to create a volume: https://winfsp.dev/rel/",
         "Run 'gitfs doctor' first — it names anything missing before you try to mount.",
         "'gitfs tree' works without any driver at all."

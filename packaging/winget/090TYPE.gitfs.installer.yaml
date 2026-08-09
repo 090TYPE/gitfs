@@ -12,6 +12,11 @@ NestedInstallerFiles:
 # Драйвер обязателен: без него gitfs показывает дерево, но том не создаётся
 Dependencies:
   PackageDependencies:
+  # Обязательная: бинарник собран framework-dependent, без рантайма он не
+  # стартует вовсе — apphost выходит с кодом 150 ещё до Main, и doctor,
+  # чья работа как раз назвать нехватку, сказать ничего не успевает.
+  - PackageIdentifier: Microsoft.DotNet.Runtime.8
+  # Необязательная для tree/doctor, обязательная для монтирования
   - PackageIdentifier: WinFsp.WinFsp
 ReleaseDate: 2026-08-08
 Installers:

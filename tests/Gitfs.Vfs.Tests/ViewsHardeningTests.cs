@@ -90,10 +90,26 @@ public class ViewsHardeningTests
 
         using var snap = RepoSnapshot.Load(repo.GitDir);
         var tree = Tree();
-        // раньше оба резолвились как директории версий, расходясь с листингом
-        Assert.Null(tree.Resolve(snap, "history/link"));
-        Assert.Null(tree.Resolve(snap, "history/sub"));
+
+        // Папкой версий раскрывается только обычный файл: цепочка версий
+        // символической ссылки или подмодуля бессмысленна (ревью M4).
         Assert.Equal(NodeKind.Directory, tree.Resolve(snap, "history/a.txt")!.Value.Kind);
+        Assert.NotEqual(NodeKind.Directory, tree.Resolve(snap, "history/link")!.Value.Kind);
+        Assert.NotEqual(NodeKind.Directory, tree.Resolve(snap, "history/sub")!.Value.Kind);
+
+        // И при этом они РАЗРЕШАЮТСЯ — как то, чем являются. Возвращать
+        // «нет такого» на имя, которое сам же перечислил, нельзя: `ls -l`
+        // спрашивает про каждую запись листинга и падает на первой такой.
+        Assert.Equal(NodeKind.Symlink, tree.Resolve(snap, "history/link")!.Value.Kind);
+        Assert.Equal(NodeKind.Submodule, tree.Resolve(snap, "history/sub")!.Value.Kind);
+
+        // Инвариант целиком: всё, что перечислено, обязано разрешаться.
+        foreach (var entry in tree.List(snap, "history")!)
+        {
+            var resolved = tree.Resolve(snap, "history/" + entry.Name);
+            Assert.True(resolved is not null,
+                $"history/ lists '{entry.Name}' and cannot resolve it");
+        }
     }
 
     // ---------- major: удаление и воссоздание ----------

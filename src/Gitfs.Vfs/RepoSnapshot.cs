@@ -185,25 +185,30 @@ public sealed class SnapshotManager : IDisposable
             if (!force && Environment.TickCount64 - _lastCheckTicks < _throttleMs)
                 return Current; // проигравший гонку за окно уходит с текущим
 
-            var signature = ComputeSignature(_gitDir);
-            if (signature == _signature)
+            // Отметка ставится ПОСЛЕ работы, а не до неё: иначе окно
+            // троттлинга течёт с начала долгого чтения, и операции,
+            // пришедшие за это время, всё равно упираются в замок — то
+            // есть троттлинг не защищает ровно тогда, ради чего он есть.
+            //
+            // И обязательно в finally. Без него бросок из RepoSnapshot.Load
+            // (например, ссылка исчезла посреди `git fetch --prune`, и
+            // RefStore читает пропавший файл) оставлял отметку непоставленной
+            // — а значит КАЖДАЯ следующая операция снова платила полный
+            // рекурсивный обход refs/ под этим же замком. Троттлинг переставал
+            // работать именно в тот момент, когда он нужнее всего.
+            try
             {
-                // Отметка ставится ПОСЛЕ работы, а не до неё. Иначе окно
-                // троттлинга начинает течь с начала долгого чтения, и
-                // операции, пришедшие за это время, всё равно упираются в
-                // замок — то есть троттлинг не защищает ровно в тот момент,
-                // ради которого он существует.
-                _lastCheckTicks = Environment.TickCount64;
-                return Current;
-            }
+                var signature = ComputeSignature(_gitDir);
+                if (signature == _signature) return Current;
 
-            var fresh = RepoSnapshot.Load(_gitDir, ReuseGraph());
-            var old = _current;
-            _signature = signature;
-            _lastCheckTicks = Environment.TickCount64;
-            Volatile.Write(ref _current, fresh); // публикация = одна запись ссылки
-            old.Release();  // ссылка менеджера; живые аренды додержат снапшот сами
-            return fresh;
+                var fresh = RepoSnapshot.Load(_gitDir, ReuseGraph());
+                var old = _current;
+                _signature = signature;
+                Volatile.Write(ref _current, fresh); // публикация = одна запись ссылки
+                old.Release();  // ссылка менеджера; живые аренды додержат снапшот сами
+                return fresh;
+            }
+            finally { _lastCheckTicks = Environment.TickCount64; }
         }
     }
 

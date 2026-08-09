@@ -154,14 +154,22 @@ public class MountServiceTests
 
         Assert.ThrowsAny<Exception>(() => service.Mount(root, ImpossibleMountPoint(), AllViews));
 
-        GC.Collect();
-        GC.WaitForPendingFinalizers();
+        // Здесь НЕ должно быть GC.Collect(). Первая версия звала его прямо
+        // перед проверкой — и утечка исчезала сама: недостижимые объекты
+        // финализировались, репозиторий разблокировался, тест зеленел над
+        // настоящим дефектом. Освобождение обязано быть сделано кодом, а не
+        // сборщиком мусора когда-нибудь потом.
         foreach (var f in Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories))
         {
             try { File.SetAttributes(f, FileAttributes.Normal); } catch { }
         }
         var problem = TryDelete(root);
         Assert.True(problem is null, $"the repository stayed locked after a failed mount: {problem}");
+
+        // На Linux у этой проверки нет зубов: там открытый файл спокойно
+        // удаляется. Говорим это прямо, а не делаем вид, что покрыты обе.
+        if (!OperatingSystem.IsWindows())
+            Assert.True(true, "this assertion only has teeth on Windows");
     }
 
     // ---------- учёт монтирований ----------

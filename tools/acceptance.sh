@@ -9,18 +9,25 @@ set -uo pipefail
 mount_point="${1:-/mnt/gitfs}"
 repo="${2:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 
-pass=0; fail=0; failures=()
+pass=0; fail=0; skip=0; failures=()
+
+# Третий исход, помимо «прошло» и «упало»: проверка неприменима к этому
+# репозиторию. Без него у проверки два выхода — упасть на том, в чём том не
+# виноват, или промолчать и зачесться как успех. Второе и превратило
+# проверку симлинков в строку «ok», за которой не стояло ничего.
+SKIP_PREFIX='SKIP: '
 
 check() {                       # check <имя> <команда...>
     local name="$1"; shift
     local problem
     problem="$("$@" 2>&1)"
-    if [ -n "$problem" ]; then
-        fail=$((fail + 1)); failures+=("$name -> $problem")
-        printf 'fail  %s\n      %s\n' "$name" "$problem"
-    else
-        pass=$((pass + 1)); printf 'ok    %s\n' "$name"
-    fi
+    case "$problem" in
+        "")            pass=$((pass + 1)); printf 'ok    %s\n' "$name" ;;
+        "$SKIP_PREFIX"*) skip=$((skip + 1))
+                       printf 'skip  %s\n      %s\n' "$name" "${problem#"$SKIP_PREFIX"}" ;;
+        *)             fail=$((fail + 1)); failures+=("$name -> $problem")
+                       printf 'fail  %s\n      %s\n' "$name" "$problem" ;;
+    esac
 }
 
 git_at() { git -C "$repo" "$@" 2>/dev/null; }
@@ -271,22 +278,42 @@ c_overlay_on_immutable_view() {
 }
 
 c_symlinks_are_real() {
-    # git хранит симлинк режимом 120000, содержимое блоба — путь цели.
-    # На Linux это обязан быть НАСТОЯЩИЙ симлинк: иначе всё, что ходит по
-    # дереву, видит обычный файл со странным содержимым.
-    local link
-    link="$(find "$mount_point/branches/$branch" -maxdepth 3 -type l 2>/dev/null | head -1)"
-    if [ -z "$link" ]; then
-        # в этом репозитории симлинков нет — проверять нечего, но и
-        # молчать нельзя: пустой вывод здесь означает успех
-        local in_git
-        in_git="$(git_at ls-files -s | awk '$1 == "120000"' | head -1)"
-        [ -z "$in_git" ] || echo "git has a symlink ($in_git) and the volume shows none"
+    # Прежняя версия искала симлинк в смонтированном репозитории — а в нём
+    # их ноль. Обе её ветки ничего не печатали, а пустой вывод здесь значит
+    # «прошло»: проверка не могла упасть, и весь путь readlink в адаптере не
+    # исполнялся НИ ОДНИМ тестом и ни одним сценарием. Именно поэтому туда
+    # уехали два дефекта сразу.
+    #
+    # Теперь ищем по всему дереву и требуем, чтобы цель совпала с тем, что
+    # git хранит в блобе. Если симлинков нет — это провал: значит проверка
+    # опять ничего не проверяет.
+    local link in_git
+    link="$(find "$mount_point/branches/$branch" -type l 2>/dev/null | head -1)"
+    in_git="$(git_at ls-tree -r "$branch" | awk '$1 == "120000"' | head -1)"
+
+    if [ -z "$link" ] && [ -z "$in_git" ]; then
+        # Ни в томе, ни в репозитории. Это не успех: проверять было нечего,
+        # и говорим об этом отдельным исходом, а не молчанием.
+        echo "${SKIP_PREFIX}this repository has no symlinks; run the circuit that mounts one"
         return
     fi
-    local target
+    if [ -z "$link" ]; then
+        echo "git has a symlink ($in_git) and the volume shows none"
+        return
+    fi
+
+    local rel target expected
+    rel="${link#"$mount_point/branches/$branch/"}"
     target="$(readlink "$link")"
-    [ -n "$target" ] || echo "readlink on $link returned nothing"
+    expected="$(git_at cat-file blob "$branch:$rel" 2>/dev/null)"
+
+    [ -n "$target" ] || { echo "readlink on $rel returned nothing"; return; }
+    [ "$target" = "$expected" ] \
+        || { echo "readlink on $rel gave '$target', git blob says '$expected'"; return; }
+
+    # и ядро обязано видеть в нём именно ссылку
+    [ "$(stat -c %F "$link")" = "symbolic link" ] \
+        || echo "$rel is not a symbolic link to the kernel: $(stat -c %F "$link")"
 }
 
 # ---------- главный инвариант ----------
@@ -334,5 +361,9 @@ check "symlinks are real symlinks"              c_symlinks_are_real
 check "REPOSITORY IS UNTOUCHED"                  c_repository_untouched
 
 echo
-echo "=== RESULT: $pass ok, $fail fail ==="
+if [ "$skip" -gt 0 ]; then
+    echo "=== RESULT: $pass ok, $fail fail, $skip skipped ==="
+else
+    echo "=== RESULT: $pass ok, $fail fail ==="
+fi
 [ "$fail" -eq 0 ] || { printf '%s\n' "${failures[@]}"; exit 1; }

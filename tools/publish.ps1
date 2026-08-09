@@ -75,7 +75,12 @@ Get-ChildItem $out -Filter *.exe | ForEach-Object {
 # собранная руками версия несла приписку с размером и CRLF — она выглядела
 # как стандартный файл, называлась как стандартный файл и не проверялась
 # ничем. Поэтому теперь её пишет скрипт.
-$sums = Get-ChildItem $out -File | Sort-Object Name | ForEach-Object {
+# -Exclude обязателен: dotnet publish -o каталог не чистит, поэтому со
+# второго запуска файл сумм лежит здесь же и хеширует сам себя — записывая
+# хеш ПРОШЛОЙ своей версии. `sha256sum -c` после этого печатает
+# «SHA256SUMS.txt: FAILED» и не сойдётся никогда. В CI это невидимо: там
+# всегда первый запуск на чистом раннере.
+$sums = Get-ChildItem $out -File -Exclude 'SHA256SUMS.txt' | Sort-Object Name | ForEach-Object {
     "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower())  $($_.Name)"
 }
 $sumsPath = Join-Path $out 'SHA256SUMS.txt'

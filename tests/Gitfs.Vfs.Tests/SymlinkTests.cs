@@ -91,9 +91,15 @@ public class SymlinkTests
         using var _r = repo;
         using var _t = target;
 
+        // Assert.False(IsOk && Kind == Directory) проходил ПОТОМУ ЧТО IsOk
+        // ложно, а не потому что вид правильный — то есть проверял не то,
+        // что заявлено. Спрашиваем прямо.
         var node = target.Lookup("history/link.txt");
-        Assert.False(node.IsOk && node.Value.Kind == NodeKind.Directory,
-            "a symlink was expanded into a version folder");
+        Assert.True(node.IsOk,
+            "history/ перечисляет link.txt, но не разрешает его: листинг и "
+            + "разрешение пути разошлись, и `ls -l` упадёт на имени, которое "
+            + "сам же и показал");
+        Assert.Equal(NodeKind.Symlink, node.Value.Kind);
     }
 
     private static string Read(VfsMountTarget target, string path)
