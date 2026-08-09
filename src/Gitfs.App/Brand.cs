@@ -27,6 +27,13 @@ internal static class Brand
     public const string TextFaintHex = "#75798c";
     public const string StrikeHex = "#595d6c";
 
+    /// <summary>Терминал — единственная роль, ОДИНАКОВАЯ в обеих темах
+    /// (tokens.css: «--term не переопределяется»). Цитата чужого текста —
+    /// журнала, вывода команды — обязана отличаться от собственных слов окна.
+    /// #161826, смешанный с чёрным на 74%.</summary>
+    public const string TermHex = "#10121c";
+    public const string TermInkHex = "#9397ab";
+
     /// <summary>Семантика — один тон на роль, отдельно от акцента (бриф §1.2).</summary>
     public const string OkHex = "#7fb77e";
     public const string WarnHex = "#e0b26d";

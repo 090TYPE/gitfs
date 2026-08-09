@@ -57,20 +57,14 @@ public static class Settings
         };
     }
 
-    /// <summary>Следующая тема по кругу: Auto → Light → Dark → Auto.
-    /// Меню трея — не место для трёх пунктов ради одного выбора.</summary>
-    public static ThemeChoice Next(ThemeChoice choice) => choice switch
-    {
-        ThemeChoice.Auto => ThemeChoice.Light,
-        ThemeChoice.Light => ThemeChoice.Dark,
-        _ => ThemeChoice.Auto,
-    };
-
-    public static string Describe(ThemeChoice choice) => choice switch
+    /// <summary>Как тема записана в файле. Одно слово на выбор — файл
+    /// открывают и правят руками, и «Follow the system» там читалось бы
+    /// хуже, чем auto.</summary>
+    private static string Token(ThemeChoice choice) => choice switch
     {
         ThemeChoice.Light => "light",
         ThemeChoice.Dark => "dark",
-        _ => "follow the system",
+        _ => "auto",
     };
 
     private static ThemeChoice Read()
@@ -101,12 +95,7 @@ public static class Settings
             var dir = System.IO.Path.GetDirectoryName(Path);
             if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
             File.WriteAllText(Path,
-                $"# gitfs settings{Environment.NewLine}theme = {Describe(choice) switch
-                {
-                    "light" => "light",
-                    "dark" => "dark",
-                    _ => "auto",
-                }}{Environment.NewLine}");
+                $"# gitfs settings{Environment.NewLine}theme = {Token(choice)}{Environment.NewLine}");
         }
         catch (Exception e) { Program.Log("settings-write", e); }
     }

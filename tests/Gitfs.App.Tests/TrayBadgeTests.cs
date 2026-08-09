@@ -148,14 +148,14 @@ public class TrayBadgeTests
     // ---------- байты ----------
 
     [Fact]
-    public void The_icon_is_a_well_formed_ico_with_both_sizes()
+    public void The_icon_is_a_well_formed_ico_with_every_size()
     {
         var bytes = TrayBadge.BuildIcon(TrayState.Mounted, 2);
 
         Assert.Equal(0, BitConverter.ToUInt16(bytes, 0));   // reserved
         Assert.Equal(1, BitConverter.ToUInt16(bytes, 2));   // тип: иконка
         var count = BitConverter.ToUInt16(bytes, 4);
-        Assert.Equal(2, count);
+        Assert.Equal(4, count);
 
         var sizes = new List<int>();
         for (var i = 0; i < count; i++)
@@ -172,7 +172,9 @@ public class TrayBadgeTests
             Assert.Equal(new byte[] { 0x89, 0x50, 0x4E, 0x47 }, bytes[offset..(offset + 4)]);
             sizes.Add(width);
         }
-        Assert.Equal(new[] { 16, 32 }, sizes);
+        // 24 и 48 — не украшение: при системном масштабе 150% и 200% панель
+        // задач просит именно их, а получив только 32, растягивает сама.
+        Assert.Equal(new[] { 16, 24, 32, 48 }, sizes);
     }
 
     /// <summary>PNG собирается вручную, поэтому CRC каждого блока проверяется

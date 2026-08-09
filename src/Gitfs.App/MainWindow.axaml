@@ -6,6 +6,11 @@
         Title="gitfs" Width="960" Height="620"
         MinWidth="760" MinHeight="480">
 
+  <!-- Клавиши для того, что делают чаще всего. Жест висит на самой кнопке
+       (HotKey), а не на окне: так он один, уважает выключенную кнопку и
+       виден в подсказке. Отдельный KeyBinding рядом открывал бы диалог
+       дважды — два пути в одно действие всегда расходятся. -->
+
   <Grid RowDefinitions="Auto,*,Auto">
 
     <!-- шапка -->
@@ -24,9 +29,11 @@
           </Border>
         </StackPanel>
         <Button Grid.Column="2" x:Name="DoctorButton" Classes="secondary"
-                Content="Doctor" Margin="0,0,8,0" Click="OnDoctor" />
+                Content="Doctor" Margin="0,0,8,0" Click="OnDoctor"
+                ToolTip.Tip="Ctrl+D" HotKey="Ctrl+D" />
         <Button Grid.Column="3" x:Name="MountButton" Classes="primary"
-                Content="Mount…" Click="OnMountClicked" />
+                Content="Mount…" Click="OnMountClicked"
+                ToolTip.Tip="Ctrl+M" HotKey="Ctrl+M" />
       </Grid>
     </Border>
 

@@ -33,17 +33,26 @@ public static class TrayBadge
     private static readonly (byte R, byte G, byte B) Warn = Brand.Warn;
     private static readonly (byte R, byte G, byte B) Fail = Brand.Err;
 
-    /// <summary>ICO из двух изображений. В 16 px число не рисуется: три
+    /// <summary>ICO из четырёх размеров. В 16 px число не рисуется: три
     /// пикселя высоты не читаются ни на одном экране, поэтому там остаётся
     /// точка — ровно то, что предписывает макет.
     ///
-    /// Какое из двух изображений возьмёт панель задач, решает сама система;
-    /// наше дело — предложить оба и не притворяться, что число видно в 16 px.</summary>
+    /// Размеров было два, 16 и 32, и на этом всё кончалось. При системном
+    /// масштабе 150% и 200% панель задач просит 24 и 48 — а получив только
+    /// 32, растягивает их сама, и значок расплывается ровно там, где экран
+    /// подробнее всего. Какое изображение взять, решает система; наше дело —
+    /// предложить те, что она спрашивает.</summary>
     public static byte[] BuildIcon(TrayState state, int count)
     {
-        var small = EncodePng(Draw(16, state, count, withNumber: false));
-        var large = EncodePng(Draw(32, state, count, withNumber: true));
-        return BuildIco(new[] { (16, small), (32, large) });
+        var images = new List<(int, byte[])>();
+        foreach (var size in new[] { 16, 24, 32, 48 })
+        {
+            // Число появляется там, где его видно: в 16 px цифра высотой в
+            // три пикселя — не цифра, а грязь на точке.
+            var withNumber = size >= 24;
+            images.Add((size, EncodePng(Draw(size, state, count, withNumber))));
+        }
+        return BuildIco(images);
     }
 
     /// <summary>Состояние по тому, что приложение действительно знает:

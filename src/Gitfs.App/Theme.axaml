@@ -58,6 +58,16 @@
 
   </ResourceDictionary.ThemeDictionaries>
 
+  <!-- Терминал ВСЕГДА тёмный — в обеих темах (tokens.css: term не
+       переопределяется). Поэтому он и стоит здесь, а не в словарях тем:
+       вывод команды и журнал тома — цитата чужого текста, и она читается
+       как терминал, а не как часть окна. Значение — #161826, смешанный с
+       чёрным на 74%, как в токене. -->
+  <Color x:Key="GfsTerm">#10121c</Color>
+  <Color x:Key="GfsTermInk">#9397ab</Color>
+  <SolidColorBrush x:Key="GfsTermBrush" Color="{StaticResource GfsTerm}" />
+  <SolidColorBrush x:Key="GfsTermInkBrush" Color="{StaticResource GfsTermInk}" />
+
   <!-- Кисти поверх цветов: разметка обращается к ним, и одна замена цвета
        в словаре темы меняет всё сразу. -->
   <SolidColorBrush x:Key="GfsBgBrush" Color="{DynamicResource GfsBg}" />

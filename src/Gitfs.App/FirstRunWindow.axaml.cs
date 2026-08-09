@@ -24,6 +24,14 @@ public partial class FirstRunWindow : Window
     private readonly DispatcherTimer _poll;
     private Check? _blocker;
 
+    /// <summary>Страницу драйвера уже открыли и теперь ждём его появления.
+    /// Макет называет это состояние «installing»; у нас оно честнее зовётся
+    /// ожиданием — мы ничего не устанавливаем, установщик в руках человека, а
+    /// мы смотрим, когда драйвер появится. Без этого состояния экран после
+    /// нажатия выглядел так же, как до него: строка «нет драйвера» и кнопка,
+    /// на которую только что нажали.</summary>
+    private bool _waitingForDriver;
+
     /// <summary>Что делать после закрытия: открыть диалог монтирования или
     /// просто показать главное окно.</summary>
     public bool WantsToMount { get; private set; }
@@ -58,6 +66,8 @@ public partial class FirstRunWindow : Window
             return;
         }
 
+        var blocker = checks.FirstOrDefault(c => c.Status == CheckStatus.Fail);
+
         Rows.Children.Clear();
         foreach (var check in checks)
         {
@@ -65,21 +75,32 @@ public partial class FirstRunWindow : Window
             {
                 ColumnDefinitions = new ColumnDefinitions("Auto,Auto,*"),
             };
-            row.Children.Add(Cell(Symbol(check.Status), 0, Palette.ForStatus(check.Status), bold: true));
+            // Строка, из-за которой ждём, говорит об ожидании ПРЯМО ЗДЕСЬ, а
+            // не только подписью внизу: смотрят на ту строку, что мешает.
+            var waiting = _waitingForDriver && check == blocker;
+            row.Children.Add(Cell(waiting ? "…" : Symbol(check.Status), 0,
+                waiting ? Palette.Warn : Palette.ForStatus(check.Status), bold: true));
             row.Children.Add(Cell(check.Name, 1, Palette.Text, width: 90));
-            row.Children.Add(Cell(check.Value, 2, Palette.Muted));
+            row.Children.Add(Cell(waiting ? "waiting for the driver to appear" : check.Value,
+                2, Palette.Muted));
             Rows.Children.Add(row);
         }
 
-        _blocker = checks.FirstOrDefault(c => c.Status == CheckStatus.Fail);
+        _blocker = blocker;
         var ready = _blocker is null;
+        // Драйвер появился — ждать больше нечего.
+        if (ready) _waitingForDriver = false;
 
         FixText.IsVisible = _blocker?.Fix is not null;
         FixText.Text = _blocker?.Fix;
 
         InstallAction.IsVisible = _blocker is { Link: not null } or { Value: not null } && !ready
                                   && DownloadPage(_blocker) is not null;
-        InstallAction.Content = InstallLabel(_blocker);
+        // Кнопка после нажатия говорит, что происходит. «Install WinFsp» на
+        // ней же означало бы, что нажатие ничего не сделало.
+        InstallAction.Content = _waitingForDriver
+            ? "Waiting for " + (_blocker?.Name ?? "the driver") + "…"
+            : InstallLabel(_blocker);
         RecheckAction.IsVisible = !ready;
         MountAction.IsVisible = ready;
 
@@ -150,6 +171,8 @@ private static TextBlock Cell(string text, int column, IBrush colour,
                 UseShellExecute = true,
             };
             process.Start();
+            _waitingForDriver = true;
+            Recheck();          // строка обязана измениться СРАЗУ по нажатию
             FixText.IsVisible = true;
             FixText.Text = "Opened " + url +
                 " — gitfs is watching, and this screen turns green on its own once the driver is there.";

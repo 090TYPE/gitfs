@@ -302,6 +302,30 @@ else
 fi
 
 echo
+echo "=== экран настроек ==="
+# Бриф §4.2 называет «Настройки» пунктом меню трея. Меню под Xvfb не
+# открыть — это нативное меню системного лотка; открываем сам экран.
+GITFS_UI_PREVIEW=settings /tmp/app/Gitfs.App > /tmp/settings.log 2>&1 &
+sp=$!
+swindow=""
+for _ in $(seq 1 40); do
+    kill -0 "$sp" 2>/dev/null || break
+    swindow="$(xdotool search --onlyvisible --name 'gitfs settings' 2>/dev/null | head -1)"
+    [ -n "$swindow" ] && break
+    sleep 0.5
+done
+if [ -z "$swindow" ]; then
+    echo "fail the settings window never appeared"; tail -20 /tmp/settings.log; status=1
+else
+    echo "ok    settings window is up"
+    sleep 1
+    import -display :99 -window root "$out/linux-settings.png" 2>/dev/null \
+        || xwd -display :99 -root | convert xwd:- "$out/linux-settings.png"
+    echo "      screenshot: $out/linux-settings.png"
+fi
+kill -TERM "$sp" 2>/dev/null; wait "$sp" 2>/dev/null
+
+echo
 echo "=== акцент наш, а не системный ==="
 # Fluent красит флажки, переключатели и выделенную строку АКЦЕНТОМ СИСТЕМЫ.
 # На машине с синим акцентом окно получало второй «главный цвет», и наш был

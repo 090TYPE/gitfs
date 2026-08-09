@@ -95,4 +95,23 @@ public class MountHealthTests
         log.Add("pack-reopened", "objects reopened");
         Assert.Equal(2, log.Reopens);
     }
+/// <summary>Индикатор состояния стоит у КАЖДОЙ строки списка томов
+    /// (бриф §4.2). Раньше здоровый том не имел никакого, и пустое место
+    /// означало разом «всё хорошо» и «строка не дорисовалась».
+    ///
+    /// Меню лотка — текст, цвета в нём нет: состояния обязаны отличаться
+    /// формой знака.</summary>
+    [Fact]
+    public void Every_mount_in_the_tray_menu_carries_a_state_indicator()
+    {
+        var seen = new List<string>();
+        foreach (var health in Enum.GetValues<MountHealth>())
+        {
+            var mark = App.Indicator(health);
+            Assert.False(string.IsNullOrWhiteSpace(mark),
+                $"{health} остался без индикатора");
+            seen.Add(mark);
+        }
+        Assert.Equal(seen.Count, seen.Distinct().Count());
+    }
 }

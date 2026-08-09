@@ -31,6 +31,7 @@ public partial class MainWindow : Window
 
     public void OpenMountDialog() => _ = MountAsync();
 
+
     /// <summary>Показать диагностику окружения. Нужно пункту «Doctor» в меню
     /// трея (бриф §4.2): проверить среду, не открывая окно самому.</summary>
     public void OpenDoctor() => ShowEnvironment();
@@ -316,7 +317,9 @@ public partial class MainWindow : Window
     /// где мы просто не знаем.</summary>
     private void ShowLogTail(MountEntry entry)
     {
-        SidePanel.Children.Add(Heading("LOG"));
+        // Заголовок — имя файла, а не слово «LOG»: он говорит, ОТКУДА текст,
+        // и человек может открыть тот же файл сам (макет 03: «logcap»).
+        SidePanel.Children.Add(Heading("log.txt"));
         var lines = MountService.Instance.LogFor(entry.MountPoint, 6);
         if (lines is null)
         {
@@ -328,20 +331,34 @@ public partial class MainWindow : Window
             SidePanel.Children.Add(Muted("empty — nothing has gone wrong yet"));
             return;
         }
-        foreach (var line in lines)
-        {
-            SidePanel.Children.Add(new TextBlock
-            {
-                Text = line,
-                Foreground = Palette.Muted,
-                FontFamily = new FontFamily("Cascadia Mono, Consolas, monospace"),
-                FontSize = 10,
-                TextWrapping = TextWrapping.Wrap,
-                MaxWidth = 280,
-                Margin = new Avalonia.Thickness(0, 2, 0, 0),
-            });
-        }
+        SidePanel.Children.Add(Terminal(lines, 10));
     }
+
+    /// <summary>Блок чужого текста — журнала, вывода команды. Тёмный В ОБЕИХ
+    /// темах: так в токенах макета («--term не переопределяется»). Смысл не в
+    /// красоте — цитата обязана отличаться от собственных слов окна, иначе
+    /// строка журнала читается как утверждение продукта.</summary>
+    private static Control Terminal(IReadOnlyList<string> lines, double fontSize) => new Border
+    {
+        Background = Palette.Term,
+        CornerRadius = new Avalonia.CornerRadius(6),
+        Padding = new Avalonia.Thickness(11, 10),
+        Child = new StackPanel
+        {
+            Children =
+            {
+                new TextBlock
+                {
+                    Text = string.Join('\n', lines),
+                    Foreground = Palette.TermInk,
+                    FontFamily = new FontFamily("Cascadia Mono, Consolas, monospace"),
+                    FontSize = fontSize,
+                    TextWrapping = TextWrapping.Wrap,
+                    LineHeight = fontSize * 1.7,
+                },
+            },
+        },
+    };
 
     private static TextBlock Heading(string text) => new()
     {

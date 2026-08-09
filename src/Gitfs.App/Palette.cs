@@ -23,6 +23,11 @@ internal static class Palette
     public static IBrush Err => Brush("GfsErrBrush", Brand.ErrHex);
     public static IBrush Strike => Brush("GfsStrikeBrush", Brand.StrikeHex);
 
+    /// <summary>Терминал — одинаковый в обеих темах, поэтому и вариант темы
+    /// здесь ни при чём: цитата чужого текста не подстраивается под окно.</summary>
+    public static IBrush Term => Brush("GfsTermBrush", Brand.TermHex);
+    public static IBrush TermInk => Brush("GfsTermInkBrush", Brand.TermInkHex);
+
     public static IBrush ForStatus(Gitfs.Diagnostics.CheckStatus status) => status switch
     {
         Gitfs.Diagnostics.CheckStatus.Ok => Ok,

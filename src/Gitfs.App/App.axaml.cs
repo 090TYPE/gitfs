@@ -51,6 +51,11 @@ public partial class App : Application
                     desktop.ShutdownMode = ShutdownMode.OnMainWindowClose;
                     base.OnFrameworkInitializationCompleted();
                     return;
+                case "settings":
+                    desktop.MainWindow = new SettingsWindow();
+                    desktop.ShutdownMode = ShutdownMode.OnMainWindowClose;
+                    base.OnFrameworkInitializationCompleted();
+                    return;
             }
 
             _main = new MainWindow();
@@ -146,6 +151,20 @@ public partial class App : Application
         BuildTrayMenu(icons[0], mounts);
     }
 
+    /// <summary>Значок состояния перед каждой строкой списка томов
+    /// (бриф §4.2: «имя репо, точка, индикатор состояния»). Индикатор был
+    /// только у больных: здоровый том не имел никакого, и «нет значка»
+    /// означало и «всё хорошо», и «строка нарисовалась не до конца».
+    ///
+    /// Меню системного лотка — это ТЕКСТ, цвета в нём нет. Поэтому состояние
+    /// различается формой знака, а не оттенком: ровно та же причина, по
+    /// которой значок в трее носит точку, треугольник и крест.</summary>
+    internal static string Indicator(MountHealth health) => health switch
+    {
+        MountHealth.Ok => "●",
+        _ => "▲",
+    };
+
     private static string FirstProblem(IReadOnlyList<Gitfs.Diagnostics.Check> checks,
         Gitfs.Diagnostics.CheckStatus status)
     {
@@ -158,8 +177,8 @@ public partial class App : Application
     private void BuildTrayMenu(TrayIcon icon, IReadOnlyList<MountEntry> mounts)
     {
         var menu = new NativeMenu();
-        menu.Add(new NativeMenuItem("Open gitfs") { Command = new Command(ShowMain) });
-        menu.Add(new NativeMenuItem("Mount…") { Command = new Command(() =>
+        menu.Add(new NativeMenuItem("Open gitfs") { Command = new RelayCommand(ShowMain) });
+        menu.Add(new NativeMenuItem("Mount…") { Command = new RelayCommand(() =>
         {
             ShowMain();
             _main?.OpenMountDialog();
@@ -183,32 +202,33 @@ public partial class App : Application
                 submenu.Add(new NativeMenuItemSeparator());
                 submenu.Add(new NativeMenuItem("Open in file manager")
                 {
-                    Command = new Command(() => Reveal(mount.MountPoint)),
+                    Command = new RelayCommand(() => Reveal(mount.MountPoint)),
                 });
                 // «Показать лог» из брифа §4.2 — это .gitfs/log.txt самого
                 // тома: журнал лежит внутри продукта, и показывать надо его,
                 // а не отдельный файл где-то в профиле.
                 submenu.Add(new NativeMenuItem("Show log")
                 {
-                    Command = new Command(() => Reveal(
+                    Command = new RelayCommand(() => Reveal(
                         System.IO.Path.Combine(mount.MountPoint, ".gitfs", "log.txt"))),
                 });
                 submenu.Add(new NativeMenuItem("Copy path")
                 {
-                    Command = new Command(() => CopyToClipboard(mount.MountPoint)),
+                    Command = new RelayCommand(() => CopyToClipboard(mount.MountPoint)),
                 });
                 submenu.Add(new NativeMenuItemSeparator());
                 submenu.Add(new NativeMenuItem($"Unmount {mount.MountPoint}")
                 {
-                    Command = new Command(() => Unmount(mount)),
+                    Command = new RelayCommand(() => Unmount(mount)),
                 });
-                var dot = mount.Health == MountHealth.Ok ? "" : "  ▲ " + mount.HealthWord;
-                menu.Add(new NativeMenuItem($"{mount.MountPoint}  {mount.Repository}{dot}")
+                menu.Add(new NativeMenuItem(
+                    $"{Indicator(mount.Health)}  {mount.MountPoint}  {mount.Repository}"
+                    + (mount.Health == MountHealth.Ok ? "" : "  " + mount.HealthWord))
                 {
                     Menu = submenu,
                     // Клик по самому монтированию открывает Проводник —
                     // подменю для действий, а не для того, чтобы попасть в том.
-                    Command = new Command(() => Reveal(mount.MountPoint)),
+                    Command = new RelayCommand(() => Reveal(mount.MountPoint)),
                 });
             }
         }
@@ -216,19 +236,39 @@ public partial class App : Application
         menu.Add(new NativeMenuItemSeparator());
         menu.Add(new NativeMenuItem("Doctor")
         {
-            Command = new Command(() => { ShowMain(); _main?.OpenDoctor(); }),
+            Command = new RelayCommand(() => { ShowMain(); _main?.OpenDoctor(); }),
         });
-        menu.Add(new NativeMenuItem($"Theme: {Settings.Describe(Settings.Theme)}")
+        // Бриф §4.2 называет здесь «Настройки», и это ЭКРАН. На его месте
+        // стоял пункт, перебиравший темы по кругу: чтобы попасть в нужную,
+        // надо было нажать дважды и посмотреть, что вышло.
+        menu.Add(new NativeMenuItem("Settings…")
         {
-            Command = new Command(() =>
-            {
-                Settings.Theme = Settings.Next(Settings.Theme);
-                RefreshTray();   // подпись пункта обязана догнать выбор
-            }),
+            Command = new RelayCommand(OpenSettings),
         });
         menu.Add(new NativeMenuItemSeparator());
-        menu.Add(new NativeMenuItem("Quit") { Command = new Command(Quit) });
+        menu.Add(new NativeMenuItem("Quit") { Command = new RelayCommand(Quit) });
         icon.Menu = menu;
+    }
+
+    private SettingsWindow? _settings;
+
+    /// <summary>Одно окно настроек, а не по одному на нажатие. Владельца ему
+    /// даём только когда менеджер ПОКАЗАН: Avalonia отказывается открывать
+    /// окно с невидимым владельцем — этим уже падал экран первого запуска.</summary>
+    private void OpenSettings()
+    {
+        try
+        {
+            if (_settings is { } open) { open.Activate(); return; }
+
+            var window = new SettingsWindow();
+            window.Closed += (_, _) => { _settings = null; RefreshTray(); };
+            _settings = window;
+
+            if (_main is { IsVisible: true } owner) window.Show(owner);
+            else window.Show();
+        }
+        catch (Exception e) { Program.Log("settings-window", e); }
     }
 
     private static void CopyToClipboard(string text)
@@ -273,14 +313,6 @@ public partial class App : Application
             desktop.Shutdown();
     }
 
-    /// <summary>NativeMenuItem вызывает действие только через ICommand:
-    /// событие Click у пункта, созданного в коде, не к чему привязать.</summary>
-    private sealed class Command(Action run) : System.Windows.Input.ICommand
-    {
-        public event EventHandler? CanExecuteChanged { add { } remove { } }
-        public bool CanExecute(object? parameter) => true;
-        public void Execute(object? parameter) => run();
-    }
 
     private void ShowMain()
     {

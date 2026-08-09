@@ -1,0 +1,91 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:app="using:Gitfs.App"
+        x:Class="Gitfs.App.SettingsWindow"
+        Title="gitfs settings" Width="560" Height="620" MinHeight="380"
+        WindowStartupLocation="CenterOwner">
+
+  <Grid RowDefinitions="Auto,*,Auto">
+
+    <Border Grid.Row="0" Padding="20,16" Background="{DynamicResource GfsSurfaceDeepBrush}">
+      <StackPanel Orientation="Horizontal" Spacing="10">
+        <app:Glyph Key="IcMark" Width="20" Height="20" VerticalAlignment="Center"
+                   Stroke="{DynamicResource GfsAccentBrush}" />
+        <TextBlock Text="Settings" Classes="h1" VerticalAlignment="Center" />
+      </StackPanel>
+    </Border>
+
+    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+      <StackPanel Margin="20,18" Spacing="20">
+
+        <StackPanel Spacing="8">
+          <TextBlock Text="Theme" Classes="muted" />
+          <!-- Три состояния — три переключателя. В меню трея на их месте
+               стоял один пункт, перебиравший темы по кругу: чтобы попасть в
+               нужную, приходилось нажимать его дважды и смотреть, что вышло.
+               Выбор из трёх показывает все варианты сразу и текущий среди них. -->
+          <Border Classes="card">
+            <StackPanel Spacing="8">
+              <RadioButton x:Name="ThemeAuto" GroupName="theme" IsCheckedChanged="OnThemeChanged">
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                  <TextBlock Text="Follow the system" Width="150" />
+                  <TextBlock Classes="muted" Text="switches with the desktop, live" />
+                </StackPanel>
+              </RadioButton>
+              <RadioButton x:Name="ThemeLight" GroupName="theme" IsCheckedChanged="OnThemeChanged">
+                <TextBlock Text="Light" Width="150" />
+              </RadioButton>
+              <RadioButton x:Name="ThemeDark" GroupName="theme" IsCheckedChanged="OnThemeChanged">
+                <TextBlock Text="Dark" Width="150" />
+              </RadioButton>
+            </StackPanel>
+          </Border>
+        </StackPanel>
+
+        <StackPanel Spacing="8">
+          <TextBlock Text="Where things live" Classes="muted" />
+          <Border Classes="card">
+            <Grid ColumnDefinitions="110,*,Auto" RowDefinitions="Auto,Auto">
+              <TextBlock Grid.Row="0" Grid.Column="0" Text="settings" Classes="muted"
+                         VerticalAlignment="Center" />
+              <TextBlock Grid.Row="0" Grid.Column="1" x:Name="SettingsPath" Classes="mono"
+                         FontSize="11" TextWrapping="Wrap" VerticalAlignment="Center" />
+              <Button Grid.Row="0" Grid.Column="2" Classes="secondary" Content="Show"
+                      Padding="10,3" FontSize="12" Click="OnShowSettingsFile" />
+
+              <TextBlock Grid.Row="1" Grid.Column="0" Text="app log" Classes="muted"
+                         VerticalAlignment="Center" Margin="0,10,0,0" />
+              <TextBlock Grid.Row="1" Grid.Column="1" x:Name="LogPath" Classes="mono"
+                         FontSize="11" TextWrapping="Wrap" VerticalAlignment="Center"
+                         Margin="0,10,0,0" />
+              <Button Grid.Row="1" Grid.Column="2" Classes="secondary" Content="Show"
+                      Padding="10,3" FontSize="12" Margin="0,10,0,0" Click="OnShowLogFile" />
+            </Grid>
+          </Border>
+        </StackPanel>
+
+        <StackPanel Spacing="8">
+          <!-- Журнал ПРИЛОЖЕНИЯ — не тома. Это его место: в панели тома он
+               стоял вместо журнала тома и обещал не то, что показывал. -->
+          <TextBlock Text="app.log" Classes="muted" />
+          <Border x:Name="LogBox" Background="{DynamicResource GfsTermBrush}"
+                  CornerRadius="8" Padding="14,12">
+            <TextBlock x:Name="LogTail" FontFamily="{DynamicResource GfsMono}"
+                       FontSize="11" LineHeight="19"
+                       Foreground="{DynamicResource GfsTermInkBrush}"
+                       TextWrapping="Wrap" />
+          </Border>
+        </StackPanel>
+
+      </StackPanel>
+    </ScrollViewer>
+
+    <Border Grid.Row="2" Background="{DynamicResource GfsFooterBrush}" Padding="16,12">
+      <Grid ColumnDefinitions="*,Auto">
+        <TextBlock Grid.Column="0" x:Name="VersionText" Classes="muted"
+                   VerticalAlignment="Center" />
+        <Button Grid.Column="1" Classes="primary" Content="Close" Click="OnClose" />
+      </Grid>
+    </Border>
+  </Grid>
+</Window>

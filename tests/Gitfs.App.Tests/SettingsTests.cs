@@ -81,24 +81,21 @@ public class SettingsTests : IDisposable
         Assert.Equal(ThemeChoice.Dark, Settings.Theme);   // в памяти всё равно учтено
     }
 
-    [Fact]
-    public void The_cycle_visits_every_choice_and_comes_back()
+    /// <summary>КАЖДЫЙ выбор доживает до перезапуска. Раньше проверялись два
+    /// из трёх, и «как в системе» среди них не было — а это единственное
+    /// значение, которое совпадает с запасным при любой ошибке чтения, и
+    /// потерю записи такой проверкой не отличить от успеха.</summary>
+    [Theory]
+    [InlineData(ThemeChoice.Auto)]
+    [InlineData(ThemeChoice.Light)]
+    [InlineData(ThemeChoice.Dark)]
+    public void Every_choice_survives_a_restart(ThemeChoice choice)
     {
-        var seen = new List<ThemeChoice>();
-        var choice = ThemeChoice.Auto;
-        for (var i = 0; i < 3; i++)
-        {
-            seen.Add(choice);
-            choice = Settings.Next(choice);
-        }
-        Assert.Equal(new[] { ThemeChoice.Auto, ThemeChoice.Light, ThemeChoice.Dark }, seen);
-        Assert.Equal(ThemeChoice.Auto, choice);   // круг замкнулся
-    }
-
-    [Fact]
-    public void Every_choice_has_words_for_the_menu()
-    {
-        foreach (var choice in Enum.GetValues<ThemeChoice>())
-            Assert.False(string.IsNullOrWhiteSpace(Settings.Describe(choice)));
+        // сперва уводим файл в заведомо другое состояние, чтобы «как было»
+        // не выдавало себя за «записалось»
+        Settings.Theme = choice == ThemeChoice.Dark ? ThemeChoice.Light : ThemeChoice.Dark;
+        Settings.Theme = choice;
+        Settings.Forget();
+        Assert.Equal(choice, Settings.Theme);
     }
 }
