@@ -58,30 +58,55 @@
             <StackPanel Spacing="8">
               <CheckBox x:Name="ViewBranches" IsChecked="True" IsCheckedChanged="OnViewToggled">
                 <StackPanel Orientation="Horizontal" Spacing="10">
+                  <Canvas Width="16" Height="16" VerticalAlignment="Center">
+                    <Canvas.RenderTransform><ScaleTransform ScaleX="0.667" ScaleY="0.667" /></Canvas.RenderTransform>
+                    <Path Data="{StaticResource IcViewBranchesStroke}" Stroke="{DynamicResource GfsTextMutedBrush}" StrokeThickness="1.7"
+                          StrokeLineCap="Round" StrokeJoin="Round" />
+                  </Canvas>
                   <TextBlock Text="branches" Classes="mono" Width="72" />
                   <TextBlock Text="every branch as a live working tree" Classes="muted" />
                 </StackPanel>
               </CheckBox>
               <CheckBox x:Name="ViewTags" IsChecked="True" IsCheckedChanged="OnViewToggled">
                 <StackPanel Orientation="Horizontal" Spacing="10">
+                  <Canvas Width="16" Height="16" VerticalAlignment="Center">
+                    <Canvas.RenderTransform><ScaleTransform ScaleX="0.667" ScaleY="0.667" /></Canvas.RenderTransform>
+                    <Path Data="{StaticResource IcViewTagsStroke}" Stroke="{DynamicResource GfsTextMutedBrush}" StrokeThickness="1.7"
+                          StrokeLineCap="Round" StrokeJoin="Round" />
+                  </Canvas>
                   <TextBlock Text="tags" Classes="mono" Width="72" />
                   <TextBlock Text="released versions, frozen" Classes="muted" />
                 </StackPanel>
               </CheckBox>
               <CheckBox x:Name="ViewCommits" IsChecked="True" IsCheckedChanged="OnViewToggled">
                 <StackPanel Orientation="Horizontal" Spacing="10">
+                  <Canvas Width="16" Height="16" VerticalAlignment="Center">
+                    <Canvas.RenderTransform><ScaleTransform ScaleX="0.667" ScaleY="0.667" /></Canvas.RenderTransform>
+                    <Path Data="{StaticResource IcViewCommitsStroke}" Stroke="{DynamicResource GfsTextMutedBrush}" StrokeThickness="1.7"
+                          StrokeLineCap="Round" StrokeJoin="Round" />
+                  </Canvas>
                   <TextBlock Text="commits" Classes="mono" Width="72" />
                   <TextBlock Text="the last 200 commits by sha" Classes="muted" />
                 </StackPanel>
               </CheckBox>
               <CheckBox x:Name="ViewDates" IsChecked="True" IsCheckedChanged="OnViewToggled">
                 <StackPanel Orientation="Horizontal" Spacing="10">
+                  <Canvas Width="16" Height="16" VerticalAlignment="Center">
+                    <Canvas.RenderTransform><ScaleTransform ScaleX="0.667" ScaleY="0.667" /></Canvas.RenderTransform>
+                    <Path Data="{StaticResource IcViewDatesStroke}" Stroke="{DynamicResource GfsTextMutedBrush}" StrokeThickness="1.7"
+                          StrokeLineCap="Round" StrokeJoin="Round" />
+                  </Canvas>
                   <TextBlock Text="dates" Classes="mono" Width="72" />
                   <TextBlock Text="the same commits, filed by day" Classes="muted" />
                 </StackPanel>
               </CheckBox>
               <CheckBox x:Name="ViewHistory" IsChecked="True" IsCheckedChanged="OnViewToggled">
                 <StackPanel Orientation="Horizontal" Spacing="10">
+                  <Canvas Width="16" Height="16" VerticalAlignment="Center">
+                    <Canvas.RenderTransform><ScaleTransform ScaleX="0.667" ScaleY="0.667" /></Canvas.RenderTransform>
+                    <Path Data="{StaticResource IcViewHistoryStroke}" Stroke="{DynamicResource GfsAccentInkBrush}" StrokeThickness="1.7"
+                          StrokeLineCap="Round" StrokeJoin="Round" />
+                  </Canvas>
                   <TextBlock Text="history" Classes="mono" Width="72" Foreground="{DynamicResource GfsAccentInkBrush}" />
                   <TextBlock Text="each file opens as a folder of its versions"
                              Classes="muted" Foreground="{DynamicResource GfsAccentInkBrush}" />
