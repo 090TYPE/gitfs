@@ -73,5 +73,59 @@ tail -20 /tmp/app.log
 
 kill -TERM "$app" 2>/dev/null
 wait "$app" 2>/dev/null
+
+# Диалог монтирования — самая большая часть макета, и до сих пор его не
+# открывало ничто, кроме человека с мышью. Проверяется тем же способом:
+# окно поднялось, нарисовалось, не пустое.
+echo
+echo "=== the mount dialog ==="
+# Список недавних заполняется заранее: пустой он ничего не рисует, и снимок
+# доказывал бы только то, что фишек нет. Вторая запись указывает в никуда —
+# на снимке она обязана быть погашенной.
+recent="$HOME/.local/share/gitfs/recent.txt"
+mkdir -p "$(dirname "$recent")"
+printf '/work\n/gone/never-existed\n' > "$recent"
+
+GITFS_UI_PREVIEW=mount-dialog /tmp/app/Gitfs.App > /tmp/dlg.log 2>&1 &
+dlg=$!
+dwindow=""
+for _ in $(seq 1 60); do
+    if ! kill -0 "$dlg" 2>/dev/null; then
+        echo "fail the dialog exited before showing a window"
+        tail -30 /tmp/dlg.log; status=1; break
+    fi
+    dwindow="$(xdotool search --name 'Mount repository' 2>/dev/null | head -1)"
+    [ -n "$dwindow" ] && break
+    sleep 0.5
+done
+
+if [ -n "$dwindow" ]; then
+    echo "ok    dialog is up: '$(xdotool getwindowname "$dwindow")'"
+    sleep 2
+    import -display :99 -window root "$out/linux-dialog.png" 2>/dev/null \
+        || xwd -display :99 -root | convert xwd:- "$out/linux-dialog.png"
+    dcolors="$(convert "$out/linux-dialog.png" -format %k info: 2>/dev/null || echo 0)"
+    echo "      screenshot: $out/linux-dialog.png, $dcolors distinct colours"
+    if [ "${dcolors:-0}" -lt 8 ]; then
+        echo "fail the dialog rendered fewer than 8 colours — it is blank, not drawn"
+        status=1
+    fi
+
+    # И то же окно с раскрытым Advanced: секция, которую никто не открывал,
+    # могла бы годами лежать сломанной за свёрнутым заголовком.
+    eval "$(xdotool getwindowgeometry --shell "$dwindow")"
+    xdotool mousemove $((X + 90)) $((Y + 470)) click 1
+    sleep 2
+    import -display :99 -window root "$out/linux-dialog-advanced.png" 2>/dev/null \
+        || xwd -display :99 -root | convert xwd:- "$out/linux-dialog-advanced.png"
+    echo "      screenshot: $out/linux-dialog-advanced.png"
+elif [ "$status" -eq 0 ]; then
+    echo "fail no window named 'Mount repository' appeared within 30 s"
+    tail -30 /tmp/dlg.log; status=1
+fi
+tail -10 /tmp/dlg.log
+kill -TERM "$dlg" 2>/dev/null
+wait "$dlg" 2>/dev/null
+
 kill -TERM "$xvfb" 2>/dev/null
 exit $status

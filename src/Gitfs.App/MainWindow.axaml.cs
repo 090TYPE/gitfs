@@ -283,6 +283,10 @@ public partial class MainWindow : Window
             var entry = await Task.Run(() => MountService.Instance.Mount(
                 result.RepositoryPath, result.MountPoint, result.Views, result.Options));
 
+            // Запоминаем ТОЛЬКО удавшееся монтирование: список недавних —
+            // это «сюда можно вернуться», а не история попыток.
+            RecentRepositories.Instance.Remember(result.RepositoryPath);
+
             _mounts.Add(entry);
             RefreshMounts();
             MountsList.SelectedItem = entry;   // сразу показываем детали нового тома

@@ -15,6 +15,19 @@ public partial class App : Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
+            // Единственный способ посмотреть на диалог автоматически: под
+            // Xvfb окно открывается программой, а не мышью, и никаким
+            // xdotool до кнопки внутри Avalonia не дотянуться. Переменная
+            // окружения, а не ключ командной строки, — чтобы это не
+            // выглядело возможностью продукта, которой оно не является.
+            if (Environment.GetEnvironmentVariable("GITFS_UI_PREVIEW") == "mount-dialog")
+            {
+                desktop.MainWindow = new MountDialog();
+                desktop.ShutdownMode = ShutdownMode.OnMainWindowClose;
+                base.OnFrameworkInitializationCompleted();
+                return;
+            }
+
             _main = new MainWindow();
             desktop.MainWindow = _main;
 

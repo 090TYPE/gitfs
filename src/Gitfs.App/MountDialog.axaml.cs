@@ -1,4 +1,6 @@
+using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Threading;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
 
@@ -25,18 +27,25 @@ public partial class MountDialog : Window
             var letters = _usesDriveLetters ? MountService.FreeDriveLetters() : [];
             LetterBox.ItemsSource = letters.Select(c => c + ":").ToList();
             if (letters.Count > 0) LetterBox.SelectedIndex = 0;
-            LetterBox.IsVisible = _usesDriveLetters && letters.Count > 0;
-            FolderBox.IsVisible = !LetterBox.IsVisible;
 
-            LettersHint.Text = LetterBox.IsVisible
+            // Выбор буквы предлагается только там, где буквы вообще есть.
+            // Где их нет — выбора нет, и переключатель из двух вариантов, у
+            // которого доступен один, только сбивает с толку.
+            var lettersUsable = _usesDriveLetters && letters.Count > 0;
+            MountKindBox.IsVisible = lettersUsable;
+            KindLetter.IsChecked = lettersUsable;
+            KindFolder.IsChecked = !lettersUsable;
+
+            LettersHint.Text = lettersUsable
                 ? "free: " + string.Join(' ', letters.Take(6))
                 : _usesDriveLetters
                     ? "every drive letter is taken — free one, or mount into a folder"
                     : "on this platform a mount point is a folder";
-            if (!LetterBox.IsVisible)
-                FolderBox.Text = Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-                    "mnt", "gitfs");
+
+            FolderBox.Text = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                "mnt", "gitfs");
+            ApplyMountKind();
         }
         catch (Exception e)
         {
@@ -49,12 +58,60 @@ public partial class MountDialog : Window
 
         try { RepoBox.Text = Directory.GetCurrentDirectory(); }
         catch (Exception) { RepoBox.Text = ""; } // текущий каталог мог исчезнуть
+        BuildRecentChips();
         UpdatePreview();
     }
 
     private string? MountPoint => LetterBox.IsVisible
         ? LetterBox.SelectedItem as string
         : string.IsNullOrWhiteSpace(FolderBox.Text) ? null : FolderBox.Text;
+
+    private void ApplyMountKind()
+    {
+        var byLetter = KindLetter.IsChecked == true && MountKindBox.IsVisible;
+        LetterBox.IsVisible = byLetter;
+        FolderBox.IsVisible = !byLetter;
+    }
+
+    private void OnMountKindChanged(object? sender, RoutedEventArgs e)
+    {
+        // Событие приходит дважды — со снятого и с надетого переключателя;
+        // обе ветки ведут в одно и то же состояние, поэтому это безвредно.
+        ApplyMountKind();
+        UpdatePreview();
+    }
+
+    /// <summary>Фишки недавних репозиториев (макет 03). Исчезнувший путь
+    /// остаётся в списке, но гаснет и объясняется подсказкой: молча вычистить
+    /// его — значит соврать о том, что человек монтировал.</summary>
+    private void BuildRecentChips()
+    {
+        RecentChips.Children.Clear();
+        List<RecentRepositories.Entry> entries;
+        try { entries = RecentRepositories.Instance.Load().ToList(); }
+        catch (Exception e) { Program.Log("recent-chips", e); return; }
+
+        RecentChips.IsVisible = entries.Count > 0;
+        foreach (var entry in entries)
+        {
+            var chip = new Button
+            {
+                Content = entry.Name,
+                Classes = { "secondary" },
+                Margin = new Thickness(0, 6, 6, 0),
+                Padding = new Thickness(10, 3),
+                FontSize = 12,
+                Foreground = new SolidColorBrush(Color.Parse(
+                    entry.StillARepository ? "#cfd3e5" : "#7c8194")),
+            };
+            ToolTip.SetTip(chip, entry.StillARepository
+                ? entry.Path
+                : entry.Path + "\nthis path is no longer a git repository");
+            var path = entry.Path;
+            chip.Click += (_, _) => { RepoBox.Text = path; UpdatePreview(); };
+            RecentChips.Children.Add(chip);
+        }
+    }
 
 
     private List<string> SelectedViews()
@@ -126,6 +183,27 @@ public partial class MountDialog : Window
         if (options.NamePolicy == Gitfs.Vfs.NamePolicyKind.Portable) flags.Add("portable names");
         if (options.HistoryRef is { } r) flags.Add("history from " + r);
         FooterFlags.Text = string.Join(" · ", flags);
+
+        AdvancedSummary.Text = SummarizeAdvanced(options);
+    }
+
+    /// <summary>Что в Advanced отличается от умолчаний. Свёрнутая секция,
+    /// внутри которой всё изменено, выглядит нетронутой — а решение
+    /// «монтировать» принимается по тому, что видно.</summary>
+    private static string SummarizeAdvanced(Gitfs.Vfs.MountOptions options)
+    {
+        var d = Gitfs.Vfs.MountOptions.Default;
+        var changed = new List<string>();
+        if (options.HistoryRef is { } r) changed.Add("history from " + r);
+        if (options.CommitLimit != d.CommitLimit) changed.Add($"{options.CommitLimit} commits");
+        if (options.HistoryLimit != d.HistoryLimit) changed.Add($"{options.HistoryLimit} versions");
+        if (options.CacheMegabytes != d.CacheMegabytes) changed.Add($"{options.CacheMegabytes} MB cache");
+        if (options.MaxCachedBlobMegabytes != d.MaxCachedBlobMegabytes)
+            changed.Add($"{options.MaxCachedBlobMegabytes} MB per object");
+        if (options.NamePolicy != d.NamePolicy) changed.Add("portable names");
+        if (options.ReadOnly) changed.Add("read-only");
+        if (options.KeepOverlay) changed.Add("overlay kept");
+        return changed.Count == 0 ? "" : "· " + string.Join(", ", changed);
     }
 
     /// <summary>Собирает настройки из полей Advanced. Пустое или нечисловое
@@ -150,6 +228,13 @@ public partial class MountDialog : Window
             KeepOverlay = KeepOverlayBox.IsChecked == true,
         };
     }
+
+    /// <summary>Раскрытая секция подтягивается в видимую часть. Без этого
+    /// щелчок по «Advanced» открывал её ниже границы окна: визуально ничего
+    /// не происходило, и это читалось как «кнопка не работает».</summary>
+    private void OnAdvancedExpanded(object? sender, RoutedEventArgs e) =>
+        Dispatcher.UIThread.Post(() => AdvancedBox.BringIntoView(),
+            DispatcherPriority.Background);
 
     private void OnAdvancedChanged(object? sender, RoutedEventArgs e) => UpdatePreview();
     private void OnAdvancedChanged(object? sender, TextChangedEventArgs e) => UpdatePreview();

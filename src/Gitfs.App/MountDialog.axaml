@@ -1,14 +1,18 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="Gitfs.App.MountDialog"
-        Title="Mount repository" Width="820" Height="560"
+        Title="Mount repository" Width="820" Height="660" MinHeight="420"
         WindowStartupLocation="CenterOwner">
 
   <Grid RowDefinitions="*,Auto">
     <Grid Grid.Row="0" ColumnDefinitions="*,300">
 
-      <!-- слева: выбор -->
-      <StackPanel Grid.Column="0" Margin="20" Spacing="16">
+      <!-- Слева выбор, и он ОБЯЗАН прокручиваться: раскрытый Advanced не
+           влезал в окно, и секция открывалась в полоску высотой в пиксель —
+           настройки существовали и были недоступны. -->
+      <ScrollViewer Grid.Column="0" HorizontalScrollBarVisibility="Disabled"
+                    VerticalScrollBarVisibility="Auto">
+      <StackPanel Margin="20" Spacing="16">
 
         <StackPanel Spacing="6">
           <TextBlock Text="Repository" Classes="muted" />
@@ -18,12 +22,23 @@
             <Button Grid.Column="1" Classes="secondary" Content="Browse…"
                     Margin="8,0,0,0" Click="OnBrowse" />
           </Grid>
+          <!-- Недавние: один клик вместо повторного набора пути (макет 03) -->
+          <WrapPanel x:Name="RecentChips" Orientation="Horizontal" />
           <TextBlock x:Name="RepoProblem" Classes="muted" Foreground="#E07B6D"
                      IsVisible="False" TextWrapping="Wrap" />
         </StackPanel>
 
         <StackPanel Spacing="6">
           <TextBlock Text="Mount point" Classes="muted" />
+          <!-- Буква или папка — это ВЫБОР, а не следствие платформы. На
+               Windows том умеет встать и в пустой каталог; молча решать за
+               человека значит прятать половину возможностей. -->
+          <StackPanel x:Name="MountKindBox" Orientation="Horizontal" Spacing="14">
+            <RadioButton x:Name="KindLetter" GroupName="mountkind" Content="Drive letter"
+                         IsChecked="True" IsCheckedChanged="OnMountKindChanged" />
+            <RadioButton x:Name="KindFolder" GroupName="mountkind" Content="Folder"
+                         IsCheckedChanged="OnMountKindChanged" />
+          </StackPanel>
           <Grid ColumnDefinitions="Auto,*">
             <ComboBox Grid.Column="0" x:Name="LetterBox" Width="90"
                       SelectionChanged="OnLetterChanged" />
@@ -76,7 +91,16 @@
 
         <!-- Advanced: всё здесь действует. Переключатель, который ничего не
              меняет, хуже отсутствующего — пользователь считает, что настроил. -->
-        <Expander x:Name="AdvancedBox" Header="Advanced" IsExpanded="False">
+        <Expander x:Name="AdvancedBox" IsExpanded="False" Expanded="OnAdvancedExpanded">
+          <Expander.Header>
+            <StackPanel Orientation="Horizontal" Spacing="10">
+              <TextBlock Text="Advanced" />
+              <!-- Сводка рядом с заголовком: свёрнутая секция обязана
+                   признаваться, что в ней что-то изменено (макет 03). -->
+              <TextBlock x:Name="AdvancedSummary" Classes="muted"
+                         VerticalAlignment="Center" />
+            </StackPanel>
+          </Expander.Header>
           <StackPanel Spacing="10" Margin="0,8,0,0">
             <Grid ColumnDefinitions="150,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto" >
               <TextBlock Grid.Row="0" Grid.Column="0" Text="History ref" Classes="muted"
@@ -128,6 +152,7 @@
           </StackPanel>
         </Expander>
       </StackPanel>
+      </ScrollViewer>
 
       <!-- справа: живое превью дерева -->
       <Border Grid.Column="1" Background="#1b1d2b" Padding="16">
