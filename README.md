@@ -131,7 +131,7 @@ scoop install https://raw.githubusercontent.com/090TYPE/gitfs/main/packaging/sco
 ```
 
 ```bash
-winget install --manifest packaging\winget\090TYPE.gitfs.yaml
+winget install --manifest packaging\winget
 ```
 
 **`gitfs tree` работает без установки чего-либо** — это тот же виртуальный слой,
