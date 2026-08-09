@@ -67,6 +67,17 @@ public partial class MainWindow : Window
         MountsChanged?.Invoke();
     }
 
+    /// <summary>Перечитывает список у службы. Нужно, когда том сняли МИМО
+    /// окна — из меню в трее: иначе таблица показывает том, которого уже нет,
+    /// и «Unmount» по нему ничего не делает.</summary>
+    public void ReloadMounts()
+    {
+        var live = MountService.Instance.Entries;
+        _mounts.Clear();
+        foreach (var entry in live) _mounts.Add(entry);
+        RefreshMounts();
+    }
+
     private void RefreshUptime()
     {
         if (_mounts.Count == 0) return;

@@ -6,17 +6,11 @@
   <!-- Трей: приложение живёт в фоне, пока смонтирован хотя бы один том -->
   <TrayIcon.Icons>
     <TrayIcons>
+      <!-- Иконка и меню собираются в коде: в них живёт состояние (бейдж с
+           числом томов, подменю на каждый том), а разметка описать его не
+           может. Здесь остаётся только исходная иконка на время запуска. -->
       <TrayIcon Icon="/Assets/gitfs.ico" ToolTipText="gitfs"
-                Clicked="OnTrayClicked">
-        <TrayIcon.Menu>
-          <NativeMenu>
-            <NativeMenuItem Header="Open gitfs" Click="OnTrayOpen" />
-            <NativeMenuItem Header="Mount…" Click="OnTrayMount" />
-            <NativeMenuItemSeparator />
-            <NativeMenuItem Header="Quit" Click="OnTrayQuit" />
-          </NativeMenu>
-        </TrayIcon.Menu>
-      </TrayIcon>
+                Clicked="OnTrayClicked" />
     </TrayIcons>
   </TrayIcon.Icons>
 

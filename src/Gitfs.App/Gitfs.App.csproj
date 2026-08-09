@@ -18,6 +18,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Рисование иконки трея проверяется по пикселям и байтам, а не глазами
+         в углу экрана: тесту нужен доступ к растру и кодировщику. -->
+    <InternalsVisibleTo Include="Gitfs.App.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Avalonia" Version="11.2.3" />
     <PackageReference Include="Avalonia.Desktop" Version="11.2.3" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="11.2.3" />
