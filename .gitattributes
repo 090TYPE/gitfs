@@ -24,3 +24,6 @@ Dockerfile* text eol=lf
 
 # фикстура ABI снимается компилятором на Linux и сверяется побайтно
 tests/Gitfs.Mount.Fuse.Tests/fixtures/fuse-abi.txt text eol=lf
+
+# читается sha256sum -c на Linux: только LF, иначе имя файла получает \r
+SHA256SUMS.txt text eol=lf

@@ -69,4 +69,16 @@ Get-ChildItem $out | Where-Object { -not $_.PSIsContainer -and -not $_.Extension
 Get-ChildItem $out -Filter *.exe | ForEach-Object {
     "{0,-16} {1,10:N0} bytes" -f $_.Name, $_.Length
 }
+
+# Контрольные суммы в том формате, который понимает sha256sum -c: два
+# пробела между хешем и именем, ничего больше, и перевод строки LF. Первая,
+# собранная руками версия несла приписку с размером и CRLF — она выглядела
+# как стандартный файл, называлась как стандартный файл и не проверялась
+# ничем. Поэтому теперь её пишет скрипт.
+$sums = Get-ChildItem $out -File | Sort-Object Name | ForEach-Object {
+    "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower())  $($_.Name)"
+}
+$sumsPath = Join-Path $out 'SHA256SUMS.txt'
+[System.IO.File]::WriteAllText($sumsPath, ($sums -join "`n") + "`n", [System.Text.UTF8Encoding]::new($false))
+"wrote $sumsPath"
 Write-Host "ok published to dist/$Runtime"
