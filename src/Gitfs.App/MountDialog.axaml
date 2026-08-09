@@ -48,6 +48,8 @@
                        VerticalAlignment="Center" Margin="12,0,0,0"
                        TextWrapping="Wrap" />
           </Grid>
+          <TextBlock x:Name="FolderNote" Classes="muted" IsVisible="False"
+                     TextWrapping="Wrap" />
         </StackPanel>
 
         <StackPanel Spacing="6">

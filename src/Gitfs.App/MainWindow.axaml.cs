@@ -230,6 +230,9 @@ public partial class MainWindow : Window
         Row("views", entry.Views);
         Row("uptime", entry.Uptime);
 
+        ShowCacheCounters(entry, Row);
+        ShowLogTail();
+
         var open = new Button
         {
             Content = "Open in file manager",
@@ -240,6 +243,77 @@ public partial class MainWindow : Window
         open.Click += (_, _) => OpenInFileManager(entry.MountPoint);
         SidePanel.Children.Add(open);
     }
+
+    /// <summary>Счётчики кэшей тома (макет 03). Числа берутся у работающих
+    /// кэшей, а не считаются заново: панель ОТЧИТЫВАЕТСЯ о томе, а не
+    /// изображает отчёт.</summary>
+    private void ShowCacheCounters(MountEntry entry, Action<string, string> Row)
+    {
+        var stats = MountService.Instance.StatsFor(entry.MountPoint);
+        if (stats is null)
+        {
+            // Том мог быть смонтирован другим процессом или уже сниматься.
+            // Пустая рамка «0 / 0 / 0%» солгала бы, что кэш простаивает.
+            SidePanel.Children.Add(Heading("CACHE"));
+            SidePanel.Children.Add(Muted("no counters: this volume is not held by this process"));
+            return;
+        }
+
+        SidePanel.Children.Add(Heading("CACHE"));
+        Row("hit rate", stats.HitRate is { } rate
+            ? $"{rate * 100:0.0}%"
+            : "nothing read yet");
+        Row("trees", $"{stats.TreeHits} hit / {stats.TreeMisses} miss");
+        Row("listings", $"{stats.ListingHits} hit / {stats.ListingMisses} miss");
+        Row("paths", $"{stats.PathHits} hit / {stats.PathMisses} miss");
+        Row("tree memory", $"{Bytes(stats.TreeBytes)} of {Bytes(stats.TreeBudget)}");
+        Row("deltas", $"{stats.DeltaHits} hit · {stats.Packs} pack" + (stats.Packs == 1 ? "" : "s"));
+        Row("sandbox", stats.OverlayFiles == 0
+            ? "nothing written"
+            : $"{stats.OverlayFiles} file{(stats.OverlayFiles == 1 ? "" : "s")} · {Bytes(stats.OverlayBytes)}");
+    }
+
+    private static string Bytes(long value) => value switch
+    {
+        < 1024 => value + " B",
+        < 1024 * 1024 => $"{value / 1024.0:0.#} KB",
+        < 1024L * 1024 * 1024 => $"{value / (1024.0 * 1024):0.#} MB",
+        _ => $"{value / (1024.0 * 1024 * 1024):0.##} GB",
+    };
+
+    /// <summary>Хвост журнала приложения (макет 03). Журнал пуст, когда всё
+    /// шло хорошо, — так и сказано; «нет данных» на этом месте заставляло бы
+    /// искать неисправность там, где её нет.</summary>
+    private void ShowLogTail()
+    {
+        SidePanel.Children.Add(Heading("LOG"));
+        var lines = Program.TailLog(6);
+        if (lines.Count == 0)
+        {
+            SidePanel.Children.Add(Muted("empty — nothing has gone wrong yet"));
+            return;
+        }
+        foreach (var line in lines)
+        {
+            SidePanel.Children.Add(new TextBlock
+            {
+                Text = line,
+                Foreground = new SolidColorBrush(Color.Parse("#9397ab")),
+                FontFamily = new FontFamily("Cascadia Mono, Consolas, monospace"),
+                FontSize = 10,
+                TextWrapping = TextWrapping.Wrap,
+                MaxWidth = 280,
+                Margin = new Avalonia.Thickness(0, 2, 0, 0),
+            });
+        }
+    }
+
+    private static TextBlock Heading(string text) => new()
+    {
+        Text = text,
+        Classes = { "kicker" },
+        Margin = new Avalonia.Thickness(0, 14, 0, 4),
+    };
 
     private static void OpenInFileManager(string path)
     {

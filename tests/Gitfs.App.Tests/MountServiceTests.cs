@@ -151,10 +151,19 @@ public class MountServiceTests
     /// обращаясь к драйверу. Первая версия брала здесь системный диск — и
     /// на машине с установленным WinFsp попытка встать поверх C: не
     /// возвращалась вовсе: этот тест подвесил CI на сорок минут. Тест не
-    /// имеет права трогать драйвер ради проверки учёта ресурсов.</summary>
-    private static string ImpossibleMountPoint() => OperatingSystem.IsWindows()
-        ? "1:"                                                  // не буква диска
-        : "/nonexistent-" + Guid.NewGuid().ToString("N")[..8];  // каталога нет
+    /// имеет права трогать драйвер ради проверки учёта ресурсов.
+    ///
+    /// Под Linux это больше НЕ «каталога нет»: приложение теперь создаёт
+    /// недостающую папку само, и такой путь стал вполне возможным — тест
+    /// смонтировал бы настоящий том вместо проверки учёта ресурсов. Берём
+    /// путь ВНУТРИ файла: его нельзя создать никаким способом.</summary>
+    private static string ImpossibleMountPoint()
+    {
+        if (OperatingSystem.IsWindows()) return "1:";   // не буква диска
+        var file = Path.Combine(Path.GetTempPath(), "gitfs-notadir-" + Guid.NewGuid().ToString("N"));
+        File.WriteAllText(file, "x");
+        return Path.Combine(file, "mnt");
+    }
 
     [Fact]
     public void A_failed_mount_does_not_leave_the_repository_locked()
@@ -237,6 +246,83 @@ public class MountServiceTests
         var dir = Path.Combine(Path.GetTempPath(), "gitfs-mnt-" + Guid.NewGuid().ToString("N")[..8]);
         Directory.CreateDirectory(dir);
         return dir;
+    }
+
+    // ---------- точка монтирования ----------
+
+    /// <summary>Диалог предлагает ~/mnt/gitfs по умолчанию и включает кнопку.
+    /// Монтирование падало строкой «каталога нет, создайте его сами» — кнопка,
+    /// которая не может сработать, найдена нажатием на неё под Xvfb.</summary>
+    [Fact]
+    public void A_mount_folder_that_does_not_exist_is_created()
+    {
+        var folder = Path.Combine(Path.GetTempPath(),
+            "gitfs-mp-" + Guid.NewGuid().ToString("N"), "gitfs");
+        try
+        {
+            MountService.PrepareMountPoint(folder);
+            Assert.True(Directory.Exists(folder), "the mount folder was not created");
+        }
+        finally
+        {
+            try { Directory.Delete(Path.GetDirectoryName(folder)!, recursive: true); }
+            catch (Exception) { }
+        }
+    }
+
+    [Fact]
+    public void An_empty_mount_folder_is_left_alone()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "gitfs-mp-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        try
+        {
+            MountService.PrepareMountPoint(folder);
+            Assert.True(Directory.Exists(folder));
+            Assert.Empty(Directory.GetFileSystemEntries(folder));
+        }
+        finally { try { Directory.Delete(folder, recursive: true); } catch (Exception) { } }
+    }
+
+    /// <summary>Том поверх непустой папки прячет её содержимое до
+    /// размонтирования. Сделать это молча нельзя — отказываем.</summary>
+    [Fact]
+    public void A_mount_folder_with_something_in_it_is_refused_not_emptied()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "gitfs-mp-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        var precious = Path.Combine(folder, "precious.txt");
+        File.WriteAllText(precious, "do not lose me");
+        try
+        {
+            var e = Assert.Throws<InvalidOperationException>(
+                () => MountService.PrepareMountPoint(folder));
+            Assert.Contains("not empty", e.Message);
+            Assert.True(File.Exists(precious), "the mount point check deleted user data");
+        }
+        finally { try { Directory.Delete(folder, recursive: true); } catch (Exception) { } }
+    }
+
+    [Fact]
+    public void A_file_is_not_a_mount_point()
+    {
+        var file = Path.Combine(Path.GetTempPath(), "gitfs-mp-" + Guid.NewGuid().ToString("N"));
+        File.WriteAllText(file, "x");
+        try
+        {
+            var e = Assert.Throws<InvalidOperationException>(
+                () => MountService.PrepareMountPoint(file));
+            Assert.Contains("file", e.Message);
+        }
+        finally { try { File.Delete(file); } catch (Exception) { } }
+    }
+
+    [Fact]
+    public void A_drive_letter_is_left_to_the_driver()
+    {
+        // буква — не путь: создавать по ней каталог нечего, и падать тоже не на чем
+        MountService.PrepareMountPoint("G:");
+        MountService.PrepareMountPoint("Z:");
     }
 
     private static string? TryDelete(string root)

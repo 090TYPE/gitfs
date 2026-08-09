@@ -50,7 +50,11 @@ public partial class App : Application
             desktop.ShutdownRequested += (_, _) => MountService.Instance.UnmountAll();
             _main.MountsChanged += RefreshTray;
             RefreshTray();
-            ShowFirstRunIfNeeded();
+            // Только КОГДА главное окно уже на экране: владелец обязан быть
+            // видимым, иначе Show(owner) бросает «Cannot show window with
+            // non-visible owner», приветствие не появляется вовсе, и об этом
+            // узнаёшь лишь из журнала. Здесь мы ещё до base — окна нет.
+            _main.Opened += (_, _) => ShowFirstRunIfNeeded();
         }
         base.OnFrameworkInitializationCompleted();
     }

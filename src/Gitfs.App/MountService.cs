@@ -44,12 +44,64 @@ public sealed class MountService
     /// на каждое монтирование за всю историю машины.
     /// Порядок обязателен: сперва том (иначе операция в полёте пишет в уже
     /// удалённый каталог), потом песочница.</summary>
-    private sealed record LiveMount(IDisposable Mount, OverlayStore Overlay) : IDisposable
+    private sealed record LiveMount(IDisposable Mount, OverlayStore Overlay,
+        SnapshotManager? Snapshots) : IDisposable
     {
         public void Dispose()
         {
             try { Mount.Dispose(); }
             finally { Overlay.Dispose(); }
+        }
+    }
+
+    /// <summary>Живые счётчики тома для панели деталей (макет 03). Всё
+    /// читается у работающих кэшей — ни одного придуманного числа.
+    /// null, если тома с такой точкой монтирования в этом процессе нет.</summary>
+    public sealed record MountStats(
+        long TreeHits, long TreeMisses, long TreeBytes, long TreeBudget,
+        long ListingHits, long ListingMisses,
+        long PathHits, long PathMisses,
+        long DeltaHits, long SizeHits, int Packs,
+        int OverlayFiles, long OverlayBytes)
+    {
+        /// <summary>Доля попаданий по всем кэшам вместе. Ноль обращений — не
+        /// «ноль процентов», а «ещё не спрашивали»: показывать 0% на свежем
+        /// томе значит наговаривать на кэш.</summary>
+        public double? HitRate
+        {
+            get
+            {
+                var hits = TreeHits + ListingHits + PathHits;
+                var total = hits + TreeMisses + ListingMisses + PathMisses;
+                return total == 0 ? null : (double)hits / total;
+            }
+        }
+    }
+
+    public MountStats? StatsFor(string mountPoint)
+    {
+        LiveMount? live;
+        lock (_gate) _live.TryGetValue(mountPoint, out live);
+        if (live?.Snapshots is not { } manager) return null;
+
+        try
+        {
+            using var lease = manager.Acquire();
+            var snapshot = lease.Snapshot;
+            return new MountStats(
+                snapshot.TreeCache.Hits, snapshot.TreeCache.Misses,
+                snapshot.TreeCache.Used, snapshot.TreeCache.MaxCost,
+                snapshot.ListingCache.Hits, snapshot.ListingCache.Misses,
+                snapshot.PathCache.Hits, snapshot.PathCache.Misses,
+                snapshot.Objects.DeltaBaseCacheHits, snapshot.Objects.SizeCacheHits,
+                snapshot.Objects.PackCount,
+                live.Overlay.Entries.Count, live.Overlay.TotalBytes);
+        }
+        catch (Exception)
+        {
+            // Панель деталей не имеет права уронить окно: снапшот могли
+            // подменить прямо сейчас, а том — уже сниматься.
+            return null;
         }
     }
 
@@ -95,6 +147,39 @@ public sealed class MountService
 
     public static IReadOnlyList<Check> Diagnose(string? repoPath) => Doctor.Run(repoPath);
 
+    /// <summary>Готовит точку монтирования, если это папка.
+    ///
+    /// Диалог предлагает ~/mnt/gitfs по умолчанию, кнопка была активна, а
+    /// монтирование падало строкой «каталога нет, создайте его сами»: кнопка,
+    /// которая не может сработать, — обещание, данное впустую. Каталог,
+    /// названный человеком в диалоге, приложение создаёт само.
+    ///
+    /// Занятый каталог НЕ трогаем: том поверх непустой папки прячет её
+    /// содержимое до размонтирования, и делать это молча нельзя.</summary>
+    internal static void PrepareMountPoint(string mountPoint)
+    {
+        if (mountPoint.Length <= 3 && mountPoint.EndsWith(':')) return;   // буква диска
+        try
+        {
+            if (Directory.Exists(mountPoint))
+            {
+                if (Directory.EnumerateFileSystemEntries(mountPoint).Any())
+                    throw new InvalidOperationException(
+                        $"{mountPoint} is not empty; a volume would hide what is in it");
+                return;
+            }
+            if (File.Exists(mountPoint))
+                throw new InvalidOperationException($"{mountPoint} is a file, not a folder");
+            Directory.CreateDirectory(mountPoint);
+        }
+        catch (InvalidOperationException) { throw; }
+        catch (Exception e)
+        {
+            throw new InvalidOperationException(
+                $"cannot use {mountPoint} as a mount point: {e.Message}", e);
+        }
+    }
+
     public static IReadOnlyList<char> FreeDriveLetters()
     {
         if (!OperatingSystem.IsWindows()) return [];
@@ -118,6 +203,7 @@ public sealed class MountService
             if (_live.ContainsKey(mountPoint))
                 throw new InvalidOperationException($"{mountPoint} is already mounted by gitfs");
         }
+        PrepareMountPoint(mountPoint);
 
 #if GITFS_WINFSP || GITFS_FUSE
         var names = NamePolicy.For(opts.NamePolicy);
@@ -143,7 +229,7 @@ public sealed class MountService
         // мусора. Успешный путь этим не страдал — там всё освобождает
         // GitfsMount.Dispose; текла ровно ветка отказа.
         catch { target.Dispose(); throw; }
-        lock (_gate) _live[mountPoint] = new LiveMount(mount, overlay);
+        lock (_gate) _live[mountPoint] = new LiveMount(mount, overlay, manager);
 #endif
         var entry = new MountEntry(new DirectoryInfo(repoPath).Name, repoPath, mountPoint,
             string.Join(' ', new[] { "branches", "tags", "commits", "dates", "history" }

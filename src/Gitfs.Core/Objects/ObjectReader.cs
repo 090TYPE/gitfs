@@ -43,6 +43,31 @@ public sealed class ObjectReader : IObjectReader, IDisposable
         _packs = packs.ToArray();
     }
 
+    /// <summary>Сколько раз пакетам не пришлось разворачивать дельту заново.
+    /// Панель тома показывает это число: без него «кэш работает» — обещание,
+    /// а не наблюдение.</summary>
+    public long DeltaBaseCacheHits
+    {
+        get
+        {
+            long total = 0;
+            foreach (var pack in _packs) total += pack.DeltaBaseCacheHits;
+            return total;
+        }
+    }
+
+    public long SizeCacheHits
+    {
+        get
+        {
+            long total = 0;
+            foreach (var pack in _packs) total += pack.SizeCacheHits;
+            return total;
+        }
+    }
+
+    public int PackCount => _packs.Length;
+
     public bool Contains(in ObjectId id)
     {
         if (_loose.Contains(id)) return true;

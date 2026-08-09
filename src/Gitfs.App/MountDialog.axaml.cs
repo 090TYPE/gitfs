@@ -164,6 +164,15 @@ public partial class MountDialog : Window
         RepoProblem.IsVisible = !repoOk && !string.IsNullOrWhiteSpace(RepoBox.Text);
         RepoProblem.Text = "No .git directory here. Pick the repository root.";
 
+        // Что станет с папкой, известно ЗАРАНЕЕ. Раньше кнопка была активна,
+        // а монтирование падало строкой «каталога нет» — узнать об этом после
+        // нажатия значит узнать слишком поздно.
+        var folderProblem = FolderBox.IsVisible ? MountFolderNote(MountPoint) : null;
+        FolderNote.IsVisible = folderProblem is not null;
+        FolderNote.Text = folderProblem?.Text;
+        FolderNote.Foreground = new SolidColorBrush(Color.Parse(
+            folderProblem is { Blocking: true } ? "#E07B6D" : "#9397ab"));
+
         // Настройки проверяются здесь же: неверное число гасит кнопку и
         // называет причину, а не всплывает исключением после нажатия.
         var options = ReadOptions();
@@ -173,7 +182,7 @@ public partial class MountDialog : Window
         if (problem is not null) AdvancedBox.IsExpanded = true;
 
         MountAction.IsEnabled = repoOk && selected.Count > 0 && MountPoint is not null
-                                && problem is null;
+                                && problem is null && folderProblem is not { Blocking: true };
         MountAction.Content = MountPoint is { } point ? $"Mount to {point}" : "Mount";
 
         // Подвал показывает то, что реально выбрано, а не постоянную надпись
@@ -204,6 +213,31 @@ public partial class MountDialog : Window
         if (options.ReadOnly) changed.Add("read-only");
         if (options.KeepOverlay) changed.Add("overlay kept");
         return changed.Count == 0 ? "" : "· " + string.Join(", ", changed);
+    }
+
+    private sealed record FolderNoteText(string Text, bool Blocking);
+
+    /// <summary>Что произойдёт с выбранной папкой. Отсутствующая — будет
+    /// создана (это делает MountService, не адаптер); непустая — препятствие:
+    /// том поверх неё спрячет содержимое до размонтирования.</summary>
+    private static FolderNoteText? MountFolderNote(string? folder)
+    {
+        if (string.IsNullOrWhiteSpace(folder)) return null;
+        try
+        {
+            if (File.Exists(folder))
+                return new FolderNoteText("That is a file, not a folder.", true);
+            if (!Directory.Exists(folder))
+                return new FolderNoteText("This folder does not exist yet — gitfs will create it.", false);
+            return Directory.EnumerateFileSystemEntries(folder).Any()
+                ? new FolderNoteText(
+                    "This folder is not empty. A volume would hide what is in it.", true)
+                : null;
+        }
+        catch (Exception e)
+        {
+            return new FolderNoteText("Cannot inspect this folder: " + e.Message, true);
+        }
     }
 
     /// <summary>Собирает настройки из полей Advanced. Пустое или нечисловое
