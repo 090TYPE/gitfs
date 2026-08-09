@@ -46,12 +46,13 @@ static void PrintUsage()
           gitfs tree <repo> [<path>]   walk the virtual tree without mounting
           gitfs cat <repo> <path>      print a file from the virtual tree
           gitfs mount <repo> <target>  mount a repository (Ctrl+C unmounts)
-          gitfs list                   list current mounts
+          gitfs list                   list every volume gitfs is holding
           gitfs purge                  remove overlays left by crashed runs
 
         Views: branches, tags, commits, dates, history.
 
         Mount options (the Advanced section of the desktop app):
+          --views=<a,b,c>              which views to build (default: all five)
           --read-only                  refuse every write to the volume
           --keep-overlay               keep the write sandbox after unmount
           --portable-names             apply the Windows name rules everywhere
@@ -69,14 +70,16 @@ static VirtualTree BuildTree(MountOptions? options = null, MountLog? log = null,
 {
     var opts = options ?? MountOptions.Default;
     var names = NamePolicy.For(opts.NamePolicy);
-    var views = new List<IView>
-    {
-        new BranchesView(names),
-        new TagsView(names),
-        new CommitsView(names, opts.CommitLimit),
-        new DatesView(names),
-        new HistoryView(names, opts.HistoryLimit, log: log),
-    };
+    // Вьюхи выбираются ключом --views. Раньше их всегда было пять, и колонка
+    // VIEWS в `gitfs list` не могла отличаться ни у одного тома — то есть
+    // выбор, который есть в диалоге, для скриптов не существовал.
+    bool On(string view) => opts.Views.Contains(view, StringComparer.OrdinalIgnoreCase);
+    var views = new List<IView>();
+    if (On("branches")) views.Add(new BranchesView(names));
+    if (On("tags")) views.Add(new TagsView(names));
+    if (On("commits")) views.Add(new CommitsView(names, opts.CommitLimit));
+    if (On("dates")) views.Add(new DatesView(names));
+    if (On("history")) views.Add(new HistoryView(names, opts.HistoryLimit, log: log));
     // .gitfs/ появляется только у смонтированного тома: у `gitfs tree` нет ни
     // песочницы, ни журнала, и показывать пустую диагностику незачем.
     if (log is not null) views.Add(new GitfsView(names, log, overlay));
@@ -106,6 +109,27 @@ static MountOptions? ParseOptions(IEnumerable<string> flags)
 
         switch (key)
         {
+            case "--views":
+                // Вьюхи задаются и здесь: без ключа `mount` всегда печатал
+                // «5 views», а колонка VIEWS в list не могла отличаться ни у
+                // одного тома — выбор из диалога для скриптов не существовал.
+                if (string.IsNullOrWhiteSpace(raw))
+                {
+                    Console.Error.WriteLine("fail --views needs a comma-separated list");
+                    Console.Error.WriteLine("     → for example: --views=branches,history");
+                    return null;
+                }
+                var wanted = raw.Split(',', StringSplitOptions.RemoveEmptyEntries
+                                            | StringSplitOptions.TrimEntries);
+                foreach (var view in wanted)
+                {
+                    if (MountOptions.AllViews.Contains(view, StringComparer.OrdinalIgnoreCase)) continue;
+                    Console.Error.WriteLine($"fail unknown view: {view}");
+                    Console.Error.WriteLine("     → pick from " + string.Join(", ", MountOptions.AllViews));
+                    return null;
+                }
+                options = options with { Views = wanted };
+                break;
             case "--read-only": options = options with { ReadOnly = true }; break;
             case "--keep-overlay": options = options with { KeepOverlay = true }; break;
             case "--portable-names":
@@ -253,10 +277,29 @@ static int Cat(string[] rest)
     finally { target.Close(handle); }
 }
 
+/// <summary>Таблица монтирований (бриф §3): репозиторий → точка → вьюхи →
+/// аптайм. Раньше печатался ОДИН заголовок и строка «(no mounts in this
+/// process)» — том создаёт отдельный процесс, который живёт до Ctrl+C, и
+/// заголовок над пустотой был честен ровно наполовину: тома есть, просто не
+/// здесь. Теперь список читается у песочниц: замок уже отличает живое от
+/// брошенного, а рядом с ним лежит описание тома.</summary>
 static int List()
 {
-    Console.WriteLine("REPOSITORY        MOUNT  VIEWS              UPTIME");
-    Console.WriteLine("(no mounts in this process)");
+    var live = OverlayStore.FindLive();
+    Console.WriteLine($"{"REPOSITORY",-18}{"MOUNT",-12}{"VIEWS",-14}UPTIME");
+    if (live.Count == 0)
+    {
+        Console.WriteLine("(nothing mounted)");
+    }
+    foreach (var mount in live)
+    {
+        var uptime = mount.Since == DateTimeOffset.MinValue
+            ? "—"
+            : Humanize(DateTimeOffset.UtcNow - mount.Since);
+        Console.WriteLine($"{Trim(mount.Repository, 17),-18}{Trim(mount.MountPoint, 11),-12}" +
+                          $"{Trim(mount.Views, 13),-14}{uptime}");
+    }
+
     var orphans = OverlayStore.FindOrphans();
     if (orphans.Count > 0)
     {
@@ -266,6 +309,16 @@ static int List()
     }
     return 0;
 }
+
+/// <summary>Время работы одной короткой строкой — как в колонке макета.</summary>
+static string Humanize(TimeSpan span) => span.TotalHours >= 1
+    ? $"{(int)span.TotalHours}h {span.Minutes:00}m"
+    : $"{span.Minutes}m";
+
+/// <summary>Обрезает с многоточием: колонки таблицы обязаны держать ширину,
+/// иначе длинное имя репозитория ломает всю сетку.</summary>
+static string Trim(string value, int width) =>
+    value.Length <= width ? value : value[..(width - 1)] + "…";
 
 static int Mount(string[] rest)
 {
@@ -303,6 +356,12 @@ static int Mount(string[] rest)
     using var overlay = OverlayStore.Create(keepOnDispose: options.KeepOverlay,
         names: NamePolicy.For(options.NamePolicy));
     log.Add("mount", $"{repoPath} -> {mountPoint}");
+    // Описание рядом с замком: другой процесс иначе не узнает, что этот том
+    // существует, и `gitfs list` печатал бы заголовок над пустотой.
+    overlay.Describe(name, mountPoint,
+        string.Join(' ', MountOptions.AllViews.Select(v =>
+            options.Views.Contains(v, StringComparer.OrdinalIgnoreCase) ? v[0].ToString() : "·")),
+        DateTimeOffset.UtcNow);
     var tree = BuildTree(options, log, overlay);
     var target = new VfsMountTarget(manager, tree, name, readOnly: options.ReadOnly,
         overlay: overlay);
@@ -318,7 +377,8 @@ static int Mount(string[] rest)
 #endif
         var elapsed = (DateTime.UtcNow - started).TotalSeconds;
         var mode = options.ReadOnly ? "read-only" : "writable";
-        Console.WriteLine($"mounted {mountPoint} · {name} · 5 views · {mode} · {elapsed:0.0}s");
+        Console.WriteLine($"mounted {mountPoint} · {name} · {options.Views.Count} view" +
+                          (options.Views.Count == 1 ? "" : "s") + $" · {mode} · {elapsed:0.0}s");
         if (options.KeepOverlay)
             Console.WriteLine($"overlay kept at {overlay.Root}");
         Console.WriteLine("press Ctrl+C to unmount");

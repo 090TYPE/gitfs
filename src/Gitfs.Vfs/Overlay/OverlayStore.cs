@@ -287,6 +287,76 @@ public sealed class OverlayStore : IDisposable
     private static readonly TimeSpan OrphanGrace = TimeSpan.FromMinutes(1);
 
     /// <summary>Осиротевшие каталоги песочницы: их показывает doctor.</summary>
+    /// <summary>Описание живого тома, положенное рядом с замком. Нужно
+    /// `gitfs list`: том создаёт ОТДЕЛЬНЫЙ процесс, который живёт до Ctrl+C,
+    /// и другому процессу узнать о нём больше неоткуда. Замок уже отличает
+    /// живое от брошенного — здесь к нему добавляется, что именно живо.</summary>
+    public const string DescriptorName = "mount.txt";
+
+    public sealed record MountDescriptor(string Repository, string MountPoint, string Views,
+        DateTimeOffset Since, string Root);
+
+    /// <summary>Записывает описание тома. Формат — «ключ = значение» по
+    /// строке: файл лежит в профиле пользователя, и его читают глазами не
+    /// реже, чем программой.</summary>
+    public void Describe(string repository, string mountPoint, string views,
+        DateTimeOffset since)
+    {
+        try
+        {
+            File.WriteAllLines(Path.Combine(_root, DescriptorName), new[]
+            {
+                "repository = " + repository,
+                "mount = " + mountPoint,
+                "views = " + views,
+                "since = " + since.ToString("O"),
+            });
+        }
+        catch (IOException) { }               // list обойдётся без строки
+        catch (UnauthorizedAccessException) { }
+    }
+
+    /// <summary>Тома, которые прямо сейчас держит хоть какой-то процесс.
+    /// Ровно то, что должен печатать `gitfs list`.</summary>
+    public static IReadOnlyList<MountDescriptor> FindLive(string? baseDirectory = null)
+    {
+        var root = baseDirectory ?? DefaultRoot();
+        if (!Directory.Exists(root)) return [];
+        var live = new List<MountDescriptor>();
+        foreach (var dir in Directory.GetDirectories(root))
+        {
+            if (IsOrphan(dir)) continue;                 // брошенное — не том
+            var file = Path.Combine(dir, DescriptorName);
+            if (!File.Exists(file)) continue;            // том без описания: молчим о нём
+            try
+            {
+                string repo = "", mount = "", views = "";
+                var since = DateTimeOffset.MinValue;
+                foreach (var line in File.ReadLines(file))
+                {
+                    var parts = line.Split('=', 2);
+                    if (parts.Length != 2) continue;
+                    var value = parts[1].Trim();
+                    switch (parts[0].Trim())
+                    {
+                        case "repository": repo = value; break;
+                        case "mount": mount = value; break;
+                        case "views": views = value; break;
+                        case "since":
+                            DateTimeOffset.TryParse(value, null,
+                                System.Globalization.DateTimeStyles.RoundtripKind, out since);
+                            break;
+                    }
+                }
+                if (mount.Length > 0) live.Add(new MountDescriptor(repo, mount, views, since, dir));
+            }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+        }
+        live.Sort((a, b) => string.CompareOrdinal(a.MountPoint, b.MountPoint));
+        return live;
+    }
+
     public static IReadOnlyList<string> FindOrphans(string? baseDirectory = null)
     {
         var root = baseDirectory ?? DefaultRoot();

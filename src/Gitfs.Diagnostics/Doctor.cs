@@ -145,7 +145,7 @@ public static class Doctor
         var free = "GHIJKLMNOPQRSTUVWXYZ".Where(c => !used.Contains(c)).Take(5).ToArray();
         return free.Length == 0
             ? new Check(CheckStatus.Fail, "drive letters", "none free",
-                "free a letter, or mount into a folder with --mount-point")
+                "free a letter, or mount into a folder: gitfs mount <repo> C:\\mnt\\gitfs")
             : new Check(CheckStatus.Ok, "drive letters", string.Join(' ', free) + " free");
     }
 

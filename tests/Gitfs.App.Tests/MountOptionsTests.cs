@@ -283,6 +283,37 @@ public class MountOptionsTests
         Directory.Delete(kept, recursive: true); // за собой прибираем сами
     }
 
+    // ---------- выбор вьюх ----------
+
+    /// <summary>Ловушка порядка статических полей: пока массив AllViews стоял
+    /// НИЖЕ Default, `new()` внутри Default брал ещё не заполненный массив,
+    /// Views уходил в null, и КАЖДОЕ монтирование без --views падало с
+    /// «Value cannot be null (Parameter 'source')». Компилятор об этом не
+    /// предупреждает, юнит-тесты молчали — нашлось живым прогоном CLI.</summary>
+    [Fact]
+    public void The_defaults_name_every_view_rather_than_nothing()
+    {
+        Assert.NotNull(MountOptions.Default.Views);
+        Assert.Equal(5, MountOptions.Default.Views.Count);
+        Assert.NotNull(new MountOptions().Views);
+        Assert.Equal(MountOptions.AllViews.OrderBy(v => v),
+            MountOptions.Default.Views.OrderBy(v => v));
+    }
+
+    [Fact]
+    public void Asking_for_two_views_builds_two()
+    {
+        using var repo = new RepoBuilder();
+        repo.WriteFile("f.txt", "x\n");
+        repo.CommitAll("first");
+
+        var options = new MountOptions { Views = new[] { "branches", "history" } };
+        using var snapshot = RepoSnapshot.Load(repo.GitDir, options: options);
+        var tree = MountService.BuildTree(options.Views, options);
+        var listed = tree.List(snapshot, "")!.Select(e => e.Name).OrderBy(n => n).ToList();
+        Assert.Equal(new[] { "branches", "history" }, listed);
+    }
+
     // ---------- проверка значений ----------
 
     [Theory]

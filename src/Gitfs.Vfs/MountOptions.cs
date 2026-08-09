@@ -9,7 +9,20 @@ namespace Gitfs.Vfs;
 /// настроил, а поведение прежнее.</summary>
 public sealed record MountOptions
 {
+    /// <summary>ПОРЯДОК ОБЪЯВЛЕНИЯ ЗДЕСЬ ЗНАЧИМ. Статические поля
+    /// инициализируются сверху вниз, и когда AllViews стоял ниже Default,
+    /// `new()` внутри Default брал ещё не заполненный массив: Views уходил
+    /// в null, и КАЖДОЕ монтирование без --views падало с «Value cannot be
+    /// null (Parameter 'source')». Компилятор об этом не предупреждает.</summary>
+    public static readonly string[] AllViews =
+        { "branches", "tags", "commits", "dates", "history" };
+
     public static readonly MountOptions Default = new();
+
+    /// <summary>Какие вьюхи показывать. Пусто — все пять: том без вьюх
+    /// бессмыслен, а «по умолчанию всё» — то, чего ждёт человек, впервые
+    /// вводящий `gitfs mount`.</summary>
+    public IReadOnlyCollection<string> Views { get; init; } = AllViews;
 
     /// <summary>Опорная точка для history/ и dates/. Пусто — HEAD.
     /// Имя разрешается как ref (main, refs/tags/v1.0) или как SHA.</summary>
