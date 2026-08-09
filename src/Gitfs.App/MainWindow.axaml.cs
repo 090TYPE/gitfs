@@ -16,6 +16,7 @@ public partial class MainWindow : Window
     /// выделение, и после монтирования детали нового тома не показывались.</summary>
     private readonly ObservableCollection<MountEntry> _mounts = new();
     private readonly DispatcherTimer _uptimeTimer;
+    private readonly DispatcherTimer _panelTimer;
 
     private SidePanelMode _panelMode = SidePanelMode.Environment;
     private CancellationTokenSource? _diagnosticsCts;
@@ -54,6 +55,20 @@ public partial class MainWindow : Window
         _uptimeTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(30) };
         _uptimeTimer.Tick += (_, _) => RefreshUptime();
         _uptimeTimer.Start();
+
+        // Счётчики кэша обновляются отдельно и часто. Раньше панель
+        // перерисовывалась только при СМЕНЕ выделения и раз в тридцать секунд
+        // вместе со временем работы: числа, обещанные живыми, стояли на нуле,
+        // пока по тому шли чтения. Отдельный таймер трогает только панель и
+        // не пересобирает список — иначе выделение слетало бы каждые две
+        // секунды прямо под курсором.
+        _panelTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
+        _panelTimer.Tick += (_, _) =>
+        {
+            if (_panelMode == SidePanelMode.Mount && MountsList.SelectedItem is MountEntry live)
+                ShowMountDetails(live);
+        };
+        _panelTimer.Start();
 
         RefreshMounts();
         ShowEnvironment();
@@ -315,6 +330,56 @@ public partial class MainWindow : Window
         Margin = new Avalonia.Thickness(0, 14, 0, 4),
     };
 
+    // ---------- тост ----------
+
+    private MountEntry? _toastMount;
+    private DispatcherTimer? _toastTimer;
+
+    /// <summary>Сообщение об удачном монтировании с прямым переходом к тому.
+    /// Смысл именно в кнопке: сказать «готово» и оставить человека искать
+    /// букву диска самому — это половина сообщения.</summary>
+    private void ShowToast(MountEntry entry)
+    {
+        _toastMount = entry;
+        ToastTitle.Text = $"{entry.MountPoint} is ready";
+        ToastDetail.Text = $"{entry.Repository} · {entry.Views.Count(c => c != ' ' && c != '·')} views";
+        Toast.IsVisible = true;
+
+        // Тост исчезает сам. Он сообщает о том, что УЖЕ случилось, и висеть
+        // до щелчка ему незачем — а закрывать каждый вручную утомительно.
+        _toastTimer?.Stop();
+        _toastTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(12) };
+        _toastTimer.Tick += (_, _) => HideToast();
+        _toastTimer.Start();
+    }
+
+    private void HideToast()
+    {
+        _toastTimer?.Stop();
+        _toastTimer = null;
+        Toast.IsVisible = false;
+        _toastMount = null;
+    }
+
+    private void OnToastOpen(object? sender, RoutedEventArgs e)
+    {
+        // Том мог быть снят за те секунды, что тост висит — из меню в трее
+        // или из этого же окна. Открывать по мёртвому пути значит показать
+        // человеку пустую папку и промолчать о причине.
+        if (_toastMount is { } mount
+            && MountService.Instance.Entries.Any(m => m.MountPoint == mount.MountPoint))
+        {
+            OpenInFileManager(mount.MountPoint);
+        }
+        else
+        {
+            StatusText.Text = "that volume is no longer mounted";
+        }
+        HideToast();
+    }
+
+    private void OnToastDismiss(object? sender, RoutedEventArgs e) => HideToast();
+
     private static void OpenInFileManager(string path)
     {
         var target = path.EndsWith(':') ? path + "\\" : path;
@@ -372,6 +437,7 @@ public partial class MainWindow : Window
             // это «сюда можно вернуться», а не история попыток.
             RecentRepositories.Instance.Remember(result.RepositoryPath);
 
+            ShowToast(entry);
             _mounts.Add(entry);
             RefreshMounts();
             MountsList.SelectedItem = entry;   // сразу показываем детали нового тома

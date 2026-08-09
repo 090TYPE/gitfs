@@ -91,5 +91,25 @@
     <Border Grid.Row="2" Background="#13151f" Padding="16,8">
       <TextBlock x:Name="StatusText" Classes="muted" Text="ready" />
     </Border>
+
+    <!-- Тост об удачном монтировании (макет). Лежит поверх содержимого, а не
+         в потоке: появление тома не должно двигать таблицу под курсором. -->
+    <Border Grid.Row="1" x:Name="Toast" IsVisible="False"
+            HorizontalAlignment="Right" VerticalAlignment="Bottom"
+            Margin="0,0,24,20" Background="#232532" CornerRadius="10"
+            Padding="16,12" BorderBrush="#3f424d" BorderThickness="1">
+      <StackPanel Orientation="Horizontal" Spacing="14">
+        <TextBlock Text="✓" Foreground="#7FB77E" FontSize="16"
+                   VerticalAlignment="Center" />
+        <StackPanel Spacing="2" VerticalAlignment="Center">
+          <TextBlock x:Name="ToastTitle" Foreground="#e9e9ed" FontSize="13" />
+          <TextBlock x:Name="ToastDetail" Classes="muted" FontSize="11.5" />
+        </StackPanel>
+        <Button x:Name="ToastOpen" Classes="primary" Content="Open"
+                Click="OnToastOpen" VerticalAlignment="Center" />
+        <Button Classes="secondary" Content="✕" Padding="10,5"
+                Click="OnToastDismiss" VerticalAlignment="Center" />
+      </StackPanel>
+    </Border>
   </Grid>
 </Window>
