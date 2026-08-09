@@ -127,5 +127,44 @@ tail -10 /tmp/dlg.log
 kill -TERM "$dlg" 2>/dev/null
 wait "$dlg" 2>/dev/null
 
+# Экран первого запуска. В контейнере fuse3 есть, поэтому он показывает
+# здоровую среду; вторым снимком показывается больная — тем же способом,
+# каким её видит doctor: подменой того, что он ищет.
+echo
+echo "=== the first-run screen ==="
+shoot_first_run() {                       # shoot_first_run <имя> [PATH]
+    local name="$1"; shift
+    env "$@" GITFS_UI_PREVIEW=first-run /tmp/app/Gitfs.App > "/tmp/$name.log" 2>&1 &
+    local pid=$!
+    local w=""
+    for _ in $(seq 1 60); do
+        kill -0 "$pid" 2>/dev/null || break
+        w="$(xdotool search --name 'first run' 2>/dev/null | head -1)"
+        [ -n "$w" ] && break
+        sleep 0.5
+    done
+    if [ -z "$w" ]; then
+        echo "fail the first-run window never appeared ($name)"
+        tail -20 "/tmp/$name.log"; status=1
+    else
+        echo "ok    first-run window is up ($name)"
+        sleep 2
+        import -display :99 -window root "$out/linux-first-run-$name.png" 2>/dev/null \
+            || xwd -display :99 -root | convert xwd:- "$out/linux-first-run-$name.png"
+        echo "      screenshot: $out/linux-first-run-$name.png"
+    fi
+    kill -TERM "$pid" 2>/dev/null
+    wait "$pid" 2>/dev/null
+}
+
+shoot_first_run healthy
+# Предупреждение, а не отказ: git пропадает из PATH. gitfs читает объекты
+# сам и без git смонтирует, поэтому doctor ставит warn — и экран обязан
+# сказать «ничто не мешает, но вот это стоит знать», а не «всё хорошо».
+shoot_first_run warned PATH=/nonexistent
+# Настоящий отказ виден, когда контейнер запущен БЕЗ --device /dev/fuse:
+# тогда doctor находит fail, и экран показывает подсказку с кнопкой. Здесь
+# это не воспроизводится — устройство даётся всему контейнеру целиком.
+
 kill -TERM "$xvfb" 2>/dev/null
 exit $status

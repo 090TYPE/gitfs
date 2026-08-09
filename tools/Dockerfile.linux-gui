@@ -4,6 +4,14 @@
 # того, что гоняется изредка.
 #
 #   docker build -f tools/Dockerfile.linux-gui -t gitfs-linux-gui tools/
+#   docker run --rm --device /dev/fuse --cap-add SYS_ADMIN \
+#       --security-opt apparmor=unconfined \
+#       -v "$PWD":/repo:ro -v /tmp/out:/out gitfs-linux-gui bash -lc \
+#       'tar -C /repo -cf - --exclude=bin --exclude=obj . | tar -C /work -xf - \
+#        && /work/tools/gui-check.sh /out'
+#
+# --device /dev/fuse обязателен НЕ для монтирования: без него экран первого
+# запуска показывает больную среду, и снимок с подписью «healthy» лжёт.
 #   см. tools/gui-check.sh
 FROM mcr.microsoft.com/dotnet/sdk:8.0
 

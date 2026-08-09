@@ -32,7 +32,6 @@ public static class TrayBadge
     private static readonly (byte R, byte G, byte B) Mark = (0x8B, 0x80, 0xDE);
     private static readonly (byte R, byte G, byte B) Warn = (0xE0, 0xB2, 0x6D);
     private static readonly (byte R, byte G, byte B) Fail = (0xE0, 0x7B, 0x6D);
-    private static readonly (byte R, byte G, byte B) Ink = (0x16, 0x18, 0x26);
 
     /// <summary>ICO из двух изображений. В 16 px число не рисуется: три
     /// пикселя высоты не читаются ни на одном экране, поэтому там остаётся

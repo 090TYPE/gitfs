@@ -20,12 +20,18 @@ public partial class App : Application
             // xdotool до кнопки внутри Avalonia не дотянуться. Переменная
             // окружения, а не ключ командной строки, — чтобы это не
             // выглядело возможностью продукта, которой оно не является.
-            if (Environment.GetEnvironmentVariable("GITFS_UI_PREVIEW") == "mount-dialog")
+            switch (Environment.GetEnvironmentVariable("GITFS_UI_PREVIEW"))
             {
-                desktop.MainWindow = new MountDialog();
-                desktop.ShutdownMode = ShutdownMode.OnMainWindowClose;
-                base.OnFrameworkInitializationCompleted();
-                return;
+                case "mount-dialog":
+                    desktop.MainWindow = new MountDialog();
+                    desktop.ShutdownMode = ShutdownMode.OnMainWindowClose;
+                    base.OnFrameworkInitializationCompleted();
+                    return;
+                case "first-run":
+                    desktop.MainWindow = new FirstRunWindow();
+                    desktop.ShutdownMode = ShutdownMode.OnMainWindowClose;
+                    base.OnFrameworkInitializationCompleted();
+                    return;
             }
 
             _main = new MainWindow();
@@ -44,8 +50,31 @@ public partial class App : Application
             desktop.ShutdownRequested += (_, _) => MountService.Instance.UnmountAll();
             _main.MountsChanged += RefreshTray;
             RefreshTray();
+            ShowFirstRunIfNeeded();
         }
         base.OnFrameworkInitializationCompleted();
+    }
+
+    /// <summary>Экран первого запуска (макет 05). Показывается ПОСЛЕ главного
+    /// окна и поверх него: закрыв его, человек оказывается в приложении, а не
+    /// в пустоте. Ошибка здесь не имеет права мешать запуску — онбординг
+    /// помогает начать, а не является условием работы.</summary>
+    private void ShowFirstRunIfNeeded()
+    {
+        try
+        {
+            var checks = MountService.Diagnose(null);
+            if (!FirstRunWindow.ShouldShow(checks)) return;
+
+            var window = new FirstRunWindow();
+            window.Closed += (_, _) =>
+            {
+                RefreshTray();     // драйвер мог появиться, пока экран был открыт
+                if (window.WantsToMount) _main?.OpenMountDialog();
+            };
+            window.Show(_main!);
+        }
+        catch (Exception e) { Program.Log("first-run", e); }
     }
 
     /// <summary>Иконка, подсказка и меню трея пересобираются вместе: они

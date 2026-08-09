@@ -1,0 +1,41 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="Gitfs.App.FirstRunWindow"
+        Title="gitfs — first run" Width="620" MinHeight="300"
+        SizeToContent="Height"
+        WindowStartupLocation="CenterScreen"
+        CanResize="False">
+
+  <Grid RowDefinitions="*,Auto">
+    <StackPanel Grid.Row="0" Margin="32,32,32,16" Spacing="16">
+
+      <TextBlock Text="One check before the first mount" Classes="h1" />
+      <TextBlock x:Name="Lead" Classes="muted" TextWrapping="Wrap" FontSize="13"
+                 Text="gitfs builds a real volume, so it needs a filesystem driver. Nothing else is required." />
+
+      <!-- Строки берутся у doctor: то же, что покажет gitfs doctor, а не
+           отдельный список, который однажды разойдётся с настоящим. -->
+      <Border Background="#232532" CornerRadius="8" Padding="14">
+        <StackPanel x:Name="Rows" Spacing="10" />
+      </Border>
+
+      <TextBlock x:Name="FixText" Classes="muted" TextWrapping="Wrap"
+                 Foreground="#E0B26D" IsVisible="False" />
+
+      <StackPanel Orientation="Horizontal" Spacing="10">
+        <Button x:Name="InstallAction" Classes="primary" Click="OnInstall"
+                IsVisible="False" />
+        <Button x:Name="MountAction" Classes="primary" Content="Mount a repository"
+                Click="OnMount" IsVisible="False" />
+        <Button x:Name="RecheckAction" Classes="secondary" Content="Check again"
+                Click="OnRecheck" IsVisible="False" />
+        <Button Classes="secondary" Content="I'll do it myself" Click="OnDismiss" />
+      </StackPanel>
+    </StackPanel>
+
+    <Border Grid.Row="1" Background="#13151f" Padding="20,14">
+      <TextBlock x:Name="StepText" Classes="muted"
+                 Text="Step 1 of 2 · next: mount your first repository" />
+    </Border>
+  </Grid>
+</Window>
