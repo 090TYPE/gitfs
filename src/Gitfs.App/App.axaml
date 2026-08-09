@@ -64,10 +64,22 @@
       <Setter Property="Foreground" Value="{DynamicResource GfsTextBrush}" />
     </Style>
 
+    <!-- Высота над фоном — токены elevation из макета. В тёмной теме это
+         кольцо в один пиксель (размытая тень на тёмном фоне не видна вовсе),
+         в светлой — кольцо и слабая чернильная тень: на почти белом фоне
+         одна тень край карточки не держит. -->
     <Style Selector="Border.card">
       <Setter Property="Background" Value="{DynamicResource GfsSurfaceBrush}" />
       <Setter Property="CornerRadius" Value="8" />
       <Setter Property="Padding" Value="14" />
+      <Setter Property="BoxShadow" Value="{DynamicResource GfsShadowSm}" />
+    </Style>
+
+    <!-- Блок чужого текста: журнал, вывод команды. Тёмный в обеих темах. -->
+    <Style Selector="Border.term">
+      <Setter Property="Background" Value="{DynamicResource GfsTermBrush}" />
+      <Setter Property="CornerRadius" Value="8" />
+      <Setter Property="BoxShadow" Value="{DynamicResource GfsShadowSm}" />
     </Style>
 
     <Style Selector="Button.primary">

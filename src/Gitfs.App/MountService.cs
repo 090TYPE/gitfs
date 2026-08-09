@@ -30,6 +30,11 @@ public sealed record MountEntry(string Repository, string Path, string MountPoin
 
     public string HealthWord => Health == MountHealth.Ok ? "ok" : "reopening";
 
+    /// <summary>Для разметки: строке нужен признак, а не перечисление —
+    /// класс включается булевым свойством, и пульс появляется у больного
+    /// тома сам, без кода в обработчиках.</summary>
+    public bool IsDegraded => Health != MountHealth.Ok;
+
     public string Uptime
     {
         get

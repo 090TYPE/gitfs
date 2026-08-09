@@ -43,6 +43,35 @@ public class SettingsTests : IDisposable
         Assert.Equal(ThemeChoice.Dark, Settings.Theme);
     }
 
+    /// <summary>Настройки НЕ затирают друг друга. Файл переписывается
+    /// целиком, и запись темы легко может унести с собой соседнюю строку —
+    /// человек выключил движение, поменял тему, и движение вернулось.</summary>
+    [Fact]
+    public void Saving_one_setting_keeps_the_other()
+    {
+        Settings.ReduceMotion = true;
+        Settings.Theme = ThemeChoice.Dark;
+        Settings.Forget();
+
+        Assert.True(Settings.ReduceMotion);
+        Assert.Equal(ThemeChoice.Dark, Settings.Theme);
+
+        Settings.Theme = ThemeChoice.Light;
+        Settings.Forget();
+        Assert.True(Settings.ReduceMotion);
+    }
+
+    [Fact]
+    public void Motion_is_on_until_someone_turns_it_off()
+    {
+        // движение по умолчанию есть: выключатель — выбор, а не умолчание
+        Assert.False(Settings.ReduceMotion);
+
+        Settings.ReduceMotion = true;
+        Settings.Forget();
+        Assert.True(Settings.ReduceMotion);
+    }
+
     [Fact]
     public void The_file_is_readable_by_a_human()
     {

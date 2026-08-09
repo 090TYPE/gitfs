@@ -56,6 +56,7 @@
                          состояние, различимое только по оттенку, молчит для
                          тех, кто этот оттенок не различает. -->
                     <Ellipse Grid.Column="0" Width="8" Height="8"
+                             Classes.degraded="{Binding IsDegraded}"
                              Fill="{Binding Health, Converter={x:Static app:HealthBrush.Instance}}"
                              VerticalAlignment="Center" Margin="0,0,8,0" />
                     <TextBlock Grid.Column="1" Text="{Binding HealthWord}" FontSize="11"
@@ -123,7 +124,7 @@
     <Border Grid.Row="1" x:Name="Toast" IsVisible="False"
             HorizontalAlignment="Right" VerticalAlignment="Bottom"
             Margin="0,0,24,20" Background="{DynamicResource GfsSurfaceBrush}" CornerRadius="10"
-            Padding="16,12" BorderBrush="{DynamicResource GfsDividerBrush}" BorderThickness="1">
+            Padding="16,12" BoxShadow="{DynamicResource GfsShadowMd}">
       <StackPanel Orientation="Horizontal" Spacing="14">
         <TextBlock Text="✓" Foreground="{DynamicResource GfsOkBrush}" FontSize="16"
                    VerticalAlignment="Center" />

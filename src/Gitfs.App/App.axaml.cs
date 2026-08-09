@@ -16,6 +16,7 @@ public partial class App : Application
         // Тема — до создания окон: иначе первый кадр рисуется одной темой,
         // а следующий другой, и это видно.
         Settings.Apply(Settings.Theme);
+        Motion.Apply();
 
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {

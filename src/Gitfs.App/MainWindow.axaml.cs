@@ -182,7 +182,7 @@ public partial class MainWindow : Window
         {
             Text = word,
             Foreground = new SolidColorBrush(colour),
-            FontFamily = new FontFamily("Cascadia Mono, Consolas, monospace"),
+            FontFamily = Palette.Mono,
             FontSize = 12,
             Width = 34,
         });
@@ -238,7 +238,7 @@ public partial class MainWindow : Window
             {
                 Text = value,
                 Foreground = Palette.Text,
-                FontFamily = new FontFamily("Cascadia Mono, Consolas, monospace"),
+                FontFamily = Palette.Mono,
                 FontSize = 12, TextWrapping = TextWrapping.Wrap, MaxWidth = 200,
             });
             SidePanel.Children.Add(row);
@@ -340,8 +340,7 @@ public partial class MainWindow : Window
     /// строка журнала читается как утверждение продукта.</summary>
     private static Control Terminal(IReadOnlyList<string> lines, double fontSize) => new Border
     {
-        Background = Palette.Term,
-        CornerRadius = new Avalonia.CornerRadius(6),
+        Classes = { "term" },
         Padding = new Avalonia.Thickness(11, 10),
         Child = new StackPanel
         {
@@ -351,7 +350,7 @@ public partial class MainWindow : Window
                 {
                     Text = string.Join('\n', lines),
                     Foreground = Palette.TermInk,
-                    FontFamily = new FontFamily("Cascadia Mono, Consolas, monospace"),
+                    FontFamily = Palette.Mono,
                     FontSize = fontSize,
                     TextWrapping = TextWrapping.Wrap,
                     LineHeight = fontSize * 1.7,

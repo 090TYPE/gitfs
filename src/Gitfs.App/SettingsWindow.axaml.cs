@@ -28,6 +28,7 @@ public partial class SettingsWindow : Window
             case ThemeChoice.Dark: ThemeDark.IsChecked = true; break;
             default: ThemeAuto.IsChecked = true; break;
         }
+        ReduceMotion.IsChecked = Settings.ReduceMotion;
         _loading = false;
 
         SettingsPath.Text = Settings.Path;
@@ -48,6 +49,16 @@ public partial class SettingsWindow : Window
         if (ThemeLight.IsChecked == true) Settings.Theme = ThemeChoice.Light;
         else if (ThemeDark.IsChecked == true) Settings.Theme = ThemeChoice.Dark;
         else if (ThemeAuto.IsChecked == true) Settings.Theme = ThemeChoice.Auto;
+    }
+
+    private void OnMotionChanged(object? sender, RoutedEventArgs e)
+    {
+        if (_loading) return;
+        Settings.ReduceMotion = ReduceMotion.IsChecked == true;
+        // Уже открытые окна должны перестать двигаться СЕЙЧАС, а не после
+        // перезапуска: настройку меняют именно потому, что движение мешает
+        // прямо сейчас.
+        Motion.Apply();
     }
 
     /// <summary>Показывает файл в файловом менеджере. Именно показывает, а не

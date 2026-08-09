@@ -12,35 +12,59 @@ public enum ThemeChoice
     Dark,
 }
 
-/// <summary>Настройки приложения. Пока их ровно одна — тема, — но пункт
-/// «Настройки» есть в меню трея по брифу §4.2, и заводить под него класс
-/// сразу дешевле, чем прятать одну переменную в трёх местах.
+/// <summary>Настройки приложения: тема и движение. Обе доходят до экрана
+/// «Настройки» (бриф §4.2) и обе действительно что-то меняют — настройка,
+/// которая ничего не делает, хуже отсутствующей.
 ///
-/// Хранится строкой в обычном файле рядом с журналом: его можно открыть,
-/// прочитать и поправить руками. Ошибки чтения и записи не выходят наружу —
-/// приложение, которое не запустилось из-за настроек, потеряло больше, чем
-/// эти настройки стоят.</summary>
+/// Хранится строками «ключ = значение» в обычном файле рядом с журналом: его
+/// можно открыть, прочитать и поправить руками. Ошибки чтения и записи не
+/// выходят наружу — приложение, которое не запустилось из-за настроек,
+/// потеряло больше, чем эти настройки стоят.
+///
+/// Файл перечитывается целиком и переписывается целиком: настроек две, и
+/// разбирать частичные обновления было бы дороже, чем сам файл.</summary>
 public static class Settings
 {
     public static string Path { get; set; } = System.IO.Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "gitfs", "settings.txt");
 
-    private static ThemeChoice? _cached;
+    private static ThemeChoice? _theme;
+    private static bool? _reduceMotion;
 
     public static ThemeChoice Theme
     {
         get
         {
-            if (_cached is { } value) return value;
-            _cached = Read();
-            return _cached.Value;
+            if (_theme is { } value) return value;
+            Load();
+            return _theme!.Value;
         }
         set
         {
-            _cached = value;
-            Write(value);
+            _theme = value;
+            Save();
             Apply(value);
+        }
+    }
+
+    /// <summary>Не двигать то, что можно не двигать. Анимация у нас ровно
+    /// одна — пульс у больного тома, — но выключатель ей нужен: движение на
+    /// краю зрения мешает читать, а кому-то от него физически плохо. Система
+    /// про своё «reduce motion» кроссплатформенно не рассказывает, поэтому
+    /// спрашиваем человека, а не угадываем.</summary>
+    public static bool ReduceMotion
+    {
+        get
+        {
+            if (_reduceMotion is { } value) return value;
+            Load();
+            return _reduceMotion!.Value;
+        }
+        set
+        {
+            _reduceMotion = value;
+            Save();
         }
     }
 
@@ -67,40 +91,63 @@ public static class Settings
         _ => "auto",
     };
 
-    private static ThemeChoice Read()
+    private static void Load()
     {
+        // Умолчания ставятся ДО чтения: файла может не быть, он может быть
+        // повреждён, и в обоих случаях значения обязаны оказаться заданными,
+        // иначе следующее обращение снова полезет в файл.
+        _theme ??= ThemeChoice.Auto;
+        _reduceMotion ??= false;
+
         try
         {
-            if (!File.Exists(Path)) return ThemeChoice.Auto;
+            if (!File.Exists(Path)) return;
             foreach (var line in File.ReadLines(Path))
             {
                 var parts = line.Split('=', 2);
-                if (parts.Length != 2 || parts[0].Trim() != "theme") continue;
-                return parts[1].Trim().ToLowerInvariant() switch
+                if (parts.Length != 2) continue;
+                var value = parts[1].Trim().ToLowerInvariant();
+                switch (parts[0].Trim())
                 {
-                    "light" => ThemeChoice.Light,
-                    "dark" => ThemeChoice.Dark,
-                    _ => ThemeChoice.Auto,
-                };
+                    case "theme":
+                        _theme = value switch
+                        {
+                            "light" => ThemeChoice.Light,
+                            "dark" => ThemeChoice.Dark,
+                            _ => ThemeChoice.Auto,
+                        };
+                        break;
+                    case "reduce-motion":
+                        _reduceMotion = value is "yes" or "true" or "1" or "on";
+                        break;
+                }
             }
         }
         catch (Exception e) { Program.Log("settings-read", e); }
-        return ThemeChoice.Auto;
     }
 
-    private static void Write(ThemeChoice choice)
+    private static void Save()
     {
         try
         {
             var dir = System.IO.Path.GetDirectoryName(Path);
             if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
-            File.WriteAllText(Path,
-                $"# gitfs settings{Environment.NewLine}theme = {Token(choice)}{Environment.NewLine}");
+            File.WriteAllText(Path, string.Join(Environment.NewLine, new[]
+            {
+                "# gitfs settings",
+                "theme = " + Token(_theme ?? ThemeChoice.Auto),
+                "reduce-motion = " + (_reduceMotion == true ? "yes" : "no"),
+                "",
+            }));
         }
         catch (Exception e) { Program.Log("settings-write", e); }
     }
 
-    /// <summary>Только для тестов: сбрасывает запомненное значение, чтобы
-    /// следующий вызов перечитал файл.</summary>
-    internal static void Forget() => _cached = null;
+    /// <summary>Только для тестов: сбрасывает запомненное, чтобы следующее
+    /// обращение перечитало файл.</summary>
+    internal static void Forget()
+    {
+        _theme = null;
+        _reduceMotion = null;
+    }
 }

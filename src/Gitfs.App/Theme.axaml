@@ -32,6 +32,13 @@
       <Color x:Key="GfsErr">#E07B6D</Color>
       <Color x:Key="GfsStrike">#595d6c</Color>
 
+      <!-- Высота над фоном. В тёмной теме это волосяная граница плюс
+           окружающая темнота — тень как размытое пятно на тёмном фоне не
+           видна вовсе, поэтому первым идёт кольцо в один пиксель. Порядок
+           как в токенах: сначала кольцо, потом падающая тень. -->
+      <BoxShadows x:Key="GfsShadowSm">0 0 0 1 #3f424d</BoxShadows>
+      <BoxShadows x:Key="GfsShadowMd">0 0 0 1 #595d6c, 0 6 18 0 #8C000000</BoxShadows>
+      <BoxShadows x:Key="GfsShadowLg">0 0 0 1 #9397ab, 0 16 40 0 #A6000000</BoxShadows>
     </ResourceDictionary>
 
     <ResourceDictionary x:Key="Light">
@@ -54,6 +61,12 @@
       <Color x:Key="GfsErr">#a63b2c</Color>
       <Color x:Key="GfsStrike">#9397ab</Color>
 
+      <!-- В светлой теме тень видна и работает как тень: чернильная,
+           слабая. Кольцо остаётся — оно держит край карточки на почти
+           белом фоне, где одной тени мало. -->
+      <BoxShadows x:Key="GfsShadowSm">0 0 0 1 #cfd3e5</BoxShadows>
+      <BoxShadows x:Key="GfsShadowMd">0 0 0 1 #cfd3e5, 0 6 18 0 #241E223C</BoxShadows>
+      <BoxShadows x:Key="GfsShadowLg">0 0 0 1 #b2b6ca, 0 16 40 0 #331E223C</BoxShadows>
     </ResourceDictionary>
 
   </ResourceDictionary.ThemeDictionaries>
@@ -88,8 +101,17 @@
   <SolidColorBrush x:Key="GfsStrikeBrush" Color="{DynamicResource GfsStrike}" />
 
   <!-- Шрифтовые роли (бриф §1.2): моно — для данных, гротеск — для текста.
-       Стек с запасными: JetBrains Mono есть не везде, Cascadia — на Windows,
-       DejaVu Sans Mono — почти в каждом Linux. -->
-  <FontFamily x:Key="GfsMono">JetBrains Mono, Cascadia Mono, Cascadia Code, Consolas, DejaVu Sans Mono, Liberation Mono, monospace</FontFamily>
+       Гротеск встроен пакетом Avalonia.Fonts.Inter и потому выглядит
+       одинаково везде; моноширинный НЕ встроен, и стек запасных — не
+       небрежность, а следствие: JetBrains Mono лежит под OFL и его можно
+       было бы положить в репозиторий, но двоичного файла шрифта у сборки
+       сейчас нет, а рисовать данные тем, что найдётся, — хуже, чем назвать
+       по имени всё, что подходит.
+
+       Порядок — по платформам: Cascadia на Windows, DejaVu и Liberation
+       почти в каждом Linux, Menlo и SF Mono на macOS. Последних двух не
+       было вовсе, и на macOS роль держалась на generic monospace — то есть
+       на том, что решит система. -->
+  <FontFamily x:Key="GfsMono">JetBrains Mono, Cascadia Mono, Cascadia Code, Consolas, DejaVu Sans Mono, Liberation Mono, Menlo, SF Mono, Monaco, monospace</FontFamily>
   <FontFamily x:Key="GfsSans">Inter, Segoe UI, DejaVu Sans, sans-serif</FontFamily>
 </ResourceDictionary>

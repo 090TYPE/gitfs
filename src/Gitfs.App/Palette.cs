@@ -23,10 +23,29 @@ internal static class Palette
     public static IBrush Err => Brush("GfsErrBrush", Brand.ErrHex);
     public static IBrush Strike => Brush("GfsStrikeBrush", Brand.StrikeHex);
 
-    /// <summary>Терминал — одинаковый в обеих темах, поэтому и вариант темы
-    /// здесь ни при чём: цитата чужого текста не подстраивается под окно.</summary>
-    public static IBrush Term => Brush("GfsTermBrush", Brand.TermHex);
+    /// <summary>Чернила терминала. Сам фон ставит стиль Border.term — он
+    /// один на все блоки; из кода нужен только цвет текста.</summary>
     public static IBrush TermInk => Brush("GfsTermInkBrush", Brand.TermInkHex);
+
+    /// <summary>Моноширинная роль — та же, что в разметке. В коде она была
+    /// написана руками и КОРОЧЕ: «Cascadia Mono, Consolas, monospace» без
+    /// DejaVu, Liberation и Menlo. На Linux и macOS элементы, собранные
+    /// кодом, падали на generic monospace, а соседние из разметки — нет:
+    /// одна роль, два разных шрифта в одном окне.</summary>
+    public static FontFamily Mono
+    {
+        get
+        {
+            var app = Application.Current;
+            if (app is not null
+                && app.TryGetResource("GfsMono", app.ActualThemeVariant, out var value)
+                && value is FontFamily family)
+            {
+                return family;
+            }
+            return new FontFamily("Cascadia Mono, Consolas, DejaVu Sans Mono, Menlo, monospace");
+        }
+    }
 
     public static IBrush ForStatus(Gitfs.Diagnostics.CheckStatus status) => status switch
     {

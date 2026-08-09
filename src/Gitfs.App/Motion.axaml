@@ -1,0 +1,27 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <!-- Единственная анимация в продукте: пульс у больного тома (макет,
+       .statuscell.warn .dot). Живёт ОТДЕЛЬНЫМ набором стилей, потому что её
+       можно выключить: Motion.Apply добавляет этот файл в стили приложения
+       или убирает его оттуда.
+
+       Пульс — ДОБАВКА к цвету и слову, а не замена им. Состояние, которое
+       видно только по движению, недоступно тому, кто смотрит на снимок, и
+       исчезает вместе с выключателем движения. -->
+  <Style Selector="Ellipse.degraded">
+    <Style.Animations>
+      <Animation Duration="0:0:2" IterationCount="Infinite">
+        <KeyFrame Cue="0%">
+          <Setter Property="Opacity" Value="1.0" />
+        </KeyFrame>
+        <KeyFrame Cue="50%">
+          <Setter Property="Opacity" Value="0.3" />
+        </KeyFrame>
+        <KeyFrame Cue="100%">
+          <Setter Property="Opacity" Value="1.0" />
+        </KeyFrame>
+      </Animation>
+    </Style.Animations>
+  </Style>
+</Styles>

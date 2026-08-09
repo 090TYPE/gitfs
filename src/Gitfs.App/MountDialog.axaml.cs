@@ -169,7 +169,7 @@ public partial class MountDialog : Window
             row.Children.Add(new TextBlock
             {
                 Text = text,
-                FontFamily = new FontFamily("Cascadia Mono, Consolas, monospace"),
+                FontFamily = Palette.Mono,
                 FontSize = 12,
                 VerticalAlignment = VerticalAlignment.Center,
                 Foreground = ink,

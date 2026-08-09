@@ -43,6 +43,19 @@
         </StackPanel>
 
         <StackPanel Spacing="8">
+          <TextBlock Text="Motion" Classes="muted" />
+          <Border Classes="card">
+            <CheckBox x:Name="ReduceMotion" IsCheckedChanged="OnMotionChanged">
+              <StackPanel Orientation="Horizontal" Spacing="10">
+                <TextBlock Text="Reduce motion" Width="150" />
+                <TextBlock Classes="muted" TextWrapping="Wrap" MaxWidth="230"
+                           Text="stops the pulse on a degraded volume; the colour and the word stay" />
+              </StackPanel>
+            </CheckBox>
+          </Border>
+        </StackPanel>
+
+        <StackPanel Spacing="8">
           <TextBlock Text="Where things live" Classes="muted" />
           <Border Classes="card">
             <Grid ColumnDefinitions="110,*,Auto" RowDefinitions="Auto,Auto">
@@ -68,12 +81,18 @@
           <!-- Журнал ПРИЛОЖЕНИЯ — не тома. Это его место: в панели тома он
                стоял вместо журнала тома и обещал не то, что показывал. -->
           <TextBlock Text="app.log" Classes="muted" />
-          <Border x:Name="LogBox" Background="{DynamicResource GfsTermBrush}"
-                  CornerRadius="8" Padding="14,12">
-            <TextBlock x:Name="LogTail" FontFamily="{DynamicResource GfsMono}"
-                       FontSize="11" LineHeight="19"
-                       Foreground="{DynamicResource GfsTermInkBrush}"
-                       TextWrapping="Wrap" />
+          <!-- Одна запись — ОДНА строка, и она прокручивается вбок. Перенос
+               по ширине превращал восемь событий в стену текста, где не
+               видно, где кончается одно и начинается другое: в журнале
+               важнее границы записей, чем то, что каждая видна целиком.
+               Высота ограничена — иначе длинный стек растягивает окно. -->
+          <Border x:Name="LogBox" Classes="term" Padding="14,12">
+            <ScrollViewer MaxHeight="170" HorizontalScrollBarVisibility="Auto"
+                          VerticalScrollBarVisibility="Auto">
+              <TextBlock x:Name="LogTail" FontFamily="{DynamicResource GfsMono}"
+                         FontSize="11" LineHeight="19"
+                         Foreground="{DynamicResource GfsTermInkBrush}" />
+            </ScrollViewer>
           </Border>
         </StackPanel>
 
