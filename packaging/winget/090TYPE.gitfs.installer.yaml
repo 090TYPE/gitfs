@@ -1,0 +1,22 @@
+PackageIdentifier: 090TYPE.gitfs
+PackageVersion: 0.1.0
+MinimumOSVersion: 10.0.0.0
+# Архив, а не голый exe: имя команды задаётся только через
+# NestedInstallerFiles. У portable-установки голого файла псевдоним берётся
+# из имени файла, и пользователь набирал бы gitfs-win-x64.
+InstallerType: zip
+NestedInstallerType: portable
+NestedInstallerFiles:
+- RelativeFilePath: gitfs.exe
+  PortableCommandAlias: gitfs
+# Драйвер обязателен: без него gitfs показывает дерево, но том не создаётся
+Dependencies:
+  PackageDependencies:
+  - PackageIdentifier: WinFsp.WinFsp
+ReleaseDate: 2026-08-08
+Installers:
+- Architecture: x64
+  InstallerUrl: https://github.com/090TYPE/gitfs/releases/download/v0.1.0/gitfs-win-x64.zip
+  InstallerSha256: 6E02E5349753CA79BBC3EE7B58A6801A5DD65039080DDA873D5061CBC74E23C6
+ManifestType: installer
+ManifestVersion: 1.6.0

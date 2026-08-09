@@ -1,0 +1,34 @@
+PackageIdentifier: 090TYPE.gitfs
+PackageVersion: 0.1.0
+PackageLocale: en-US
+Publisher: 090TYPE
+PublisherUrl: https://github.com/090TYPE
+PublisherSupportUrl: https://github.com/090TYPE/gitfs/issues
+PackageName: gitfs
+PackageUrl: https://github.com/090TYPE/gitfs
+License: MIT
+LicenseUrl: https://github.com/090TYPE/gitfs/blob/main/LICENSE
+ShortDescription: Mounts a git repository as a drive
+Description: |-
+  Mounts a git repository as a drive. Commits are folders, and a file is a
+  folder too, holding every version of itself. See what a file was three
+  months ago without a checkout, without touching your working copy, and
+  without leaving Explorer, an IDE, grep or Word.
+
+  Writes are allowed and never reach the repository: they land in a
+  copy-on-write sandbox. Needs the WinFsp driver and the .NET 8 runtime;
+  run "gitfs doctor" and it names anything missing.
+Moniker: gitfs
+Tags:
+- git
+- filesystem
+- version-control
+- virtual-filesystem
+- winfsp
+ReleaseNotes: |-
+  First release. Five views over a git reader written from scratch, a
+  copy-on-write sandbox, and acceptance against a live mounted volume in CI
+  on both Windows and Linux.
+ReleaseNotesUrl: https://github.com/090TYPE/gitfs/releases/tag/v0.1.0
+ManifestType: defaultLocale
+ManifestVersion: 1.6.0
